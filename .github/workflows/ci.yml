@@ -20,7 +20,7 @@ jobs:
       - name: Run tests
         run: |
           git clone https://github.com/markreedz/mrloop.git mrloop && \
-          git clone https://github.com/axboe/liburing.git liburing && cd liburing && make && make install && \
+          git clone https://github.com/axboe/liburing.git liburing && cd liburing && make && sudo make install && \
           cd ../ && git clone https://github.com/h2o/picohttpparser.git picohttp && \
           phpize && ./configure --with-mrloop="$(pwd)/mrloop" --with-picohttp="$(pwd)/picohttp" && \
           make && make test

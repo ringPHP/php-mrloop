@@ -7,13 +7,10 @@ use ringphp\Mrloop;
 
 $loop = Mrloop::init();
 
-$loop->addReadStream(
-  \popen('echo "Readable"', 'r'),
-  null,
-  function (...$args) use ($loop) {
-    [$data] = $args;
-
-    echo \rtrim($data) . PHP_EOL;
+$loop->addTimer(
+  1.2,
+  function () {
+    var_dump('Tick');
 
     \posix_kill(\posix_getpid(), SIGINT);
   },
@@ -30,5 +27,5 @@ $loop->run();
 
 ?>
 --EXPECT--
-Readable
+string(4) "Tick"
 Terminated with SIGINT

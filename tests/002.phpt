@@ -8,12 +8,20 @@ use ringphp\Mrloop;
 $loop = Mrloop::init();
 
 $loop->addReadStream(
-  \popen('php -m | grep "mrloop"', 'r'),
+  \popen('pwd', 'r'),
   null,
   function (...$args) use ($loop) {
-    [$data] = $args;
+    [$message] = $args;
 
-    var_dump(\rtrim($data));
+    var_dump(
+      (bool) \preg_match(
+        \sprintf(
+          '/%s/ix',
+          \preg_quote($message, '/'),
+        ),
+        __DIR__,
+      ),
+    );
 
     $loop->stop();
   },
@@ -23,4 +31,4 @@ $loop->run();
 
 ?>
 --EXPECT--
-string(6) "mrloop"
+bool(true)

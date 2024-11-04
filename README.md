@@ -153,11 +153,13 @@ use ringphp\MrLoop;
 $loop = Mrloop::init();
 
 $loop->addReadStream(
-  \fopen('/path/to/file', 'r'),
+  $fd = \fopen('/path/to/file', 'r'),
   null,
-  function (string $contents, int $res) {
+  function (string $contents, int $res) use ($fd) {
     if ($res === 0) {
       echo \sprintf("%s\n", $contents);
+
+      \fclose($fd);
     }
   },
 );
@@ -203,10 +205,12 @@ $loop = MrLoop::init();
 $file = '/path/to/file';
 
 $loop->addWriteStream(
-  \fopen($file, 'w'),
+  $fd = \fopen($file, 'w'),
   "file contents...\n",
-  function (int $nbytes) use ($file) {
+  function (int $nbytes) use ($fd, $file) {
     echo \sprintf("Wrote %d bytes to %s\n", $nbytes, $file);
+
+    \fclose($fd);
   },
 );
 
@@ -392,8 +396,10 @@ $loop->addWriteStream(
     $loop->addReadStream(
       $sock,
       null,
-      function ($data, $res) use ($loop) {
+      function ($data, $res) use ($sock, $loop) {
         var_dump(Mrloop::parseHttpResponse($data));
+
+        \fclose($sock);
       },
     );
   },
@@ -542,6 +548,7 @@ Executes a specified action in perpetuity with each successive execution occurri
 
 - **interval** (float) - The interval (in seconds) between successive executions of a specified action.
 - **callback** (callable) - The function in which the specified action due for periodical execution is defined.
+  > A return value of `0` will cancel the timer.
 
 **Return value(s)**
 
@@ -559,7 +566,7 @@ $loop->addPeriodicTimer(
     echo \sprintf("Tick: %d\n", ++$tick);
 
     if ($tick === 5) {
-      $loop->stop();
+      $loop->stop(); // return 0;
     }
   },
 );
@@ -600,12 +607,15 @@ use ringphp\Mrloop;
 
 $loop = Mrloop::init();
 
-$loop->freadv(
-  '/path/to/file',
+$loop->addReadStream(
+  $fd = \fopen('/path/to/file', 'r'),
   null,
-  null,
-  function (string $contents) {
+  function (...$args) use ($fd) {
+    [$contents] = $args;
+
     echo \sprintf("%s\n", $contents);
+
+    \fclose($fd);
   },
 );
 
@@ -670,10 +680,12 @@ use ringphp\Mrloop;
 $loop = Mrloop::init();
 
 $loop->addReadStream(
-  \fopen('/path/to/file', 'r'),
+  $fd = \fopen('/path/to/file', 'r'),
   'File contents...',
-  function ($contents, $res) use ($loop) {
+  function ($contents, $res) use ($fd, $loop) {
     echo \sprintf("%s\n", $contents);
+
+    \fclose($fd);
 
     $loop->stop();
   },

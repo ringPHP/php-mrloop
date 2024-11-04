@@ -1,5 +1,18 @@
 --TEST--
 addSignal() performs a specified action in the event that a specified signal is detected
+--SKIPIF--
+<?php
+
+if (
+  !(
+    \extension_loaded('posix') &&
+    \extension_loaded('pcntl')
+  )
+) {
+  echo 'skip';
+}
+
+?>
 --FILE--
 <?php
 

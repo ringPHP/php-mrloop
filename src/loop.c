@@ -90,6 +90,15 @@ static int php_mrloop_timer_cb(void *data)
     return 0;
   }
 
+  // add explicit timer cancellation to periodic timer
+  if (type == PHP_MRLOOP_PERIODIC_TIMER && Z_TYPE(result) == IS_LONG && Z_LVAL(result) == 0)
+  {
+    zval_ptr_dtor(&result);
+    efree(cb);
+
+    return 0;
+  }
+
   zval_ptr_dtor(&result);
   efree(cb);
 

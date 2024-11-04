@@ -8,9 +8,9 @@ use ringphp\Mrloop;
 $loop = Mrloop::init();
 
 $loop->addReadStream(
-  \popen('pwd', 'r'),
+  $fd = \popen('pwd', 'r'),
   null,
-  function (...$args) use ($loop) {
+  function (...$args) use ($fd, $loop) {
     [$message] = $args;
 
     var_dump(
@@ -22,6 +22,8 @@ $loop->addReadStream(
         __DIR__,
       ),
     );
+
+    \pclose($fd);
 
     $loop->stop();
   },

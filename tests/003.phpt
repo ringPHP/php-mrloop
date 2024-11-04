@@ -10,11 +10,12 @@ $loop = Mrloop::init();
 $file = \sprintf("%s/file.txt", __DIR__);
 
 $loop->addWriteStream(
-  \fopen($file, 'w'),
+  $fd = \fopen($file, 'w'),
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
-  function (int $nbytes) use ($file, $loop) {
+  function (int $nbytes) use ($fd, $file, $loop) {
     var_dump($nbytes);
 
+    \fclose($fd);
     \unlink($file);
 
     $loop->stop();

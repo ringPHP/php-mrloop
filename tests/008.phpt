@@ -25,12 +25,15 @@ $loop->addTimer(
   function () {
     var_dump('Tick');
 
-    \posix_kill(\posix_getpid(), SIGINT);
+    \posix_kill(
+      \posix_getpid(),
+      (\defined('SIGINT') ? SIGINT : 2),
+    );
   },
 );
 
 $loop->addSignal(
-  SIGINT,
+  (\defined('SIGINT') ? SIGINT : 2),
   function () {
     echo "Terminated with SIGINT\n";
   },

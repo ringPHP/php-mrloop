@@ -18,6 +18,15 @@ PHP_ARG_WITH([picohttp],
   [no])
 
 if test "$PHP_MRLOOP" != "no"; then
+  dnl add PHP version check
+  PHP_VERSION=$($PHP_CONFIG --vernum)
+  AC_MSG_CHECKING([PHP version])
+  if test $PHP_VERSION -lt 80100; then
+    AC_MSG_ERROR([ext-sbhttp requires PHP 8.1+])
+  else
+    AC_MSG_RESULT([ok])
+  fi
+
   HEADER_INSTALL_DIRS="/usr/local/lib /usr/lib"
   URING_OBJ="liburing.so"
 

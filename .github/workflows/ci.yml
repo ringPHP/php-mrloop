@@ -17,6 +17,7 @@ jobs:
         uses: shivammathur/setup-php@master
         with:
           php-version: ${{ matrix.php }}
+          extensions: posix, pcntl
       - name: Run tests
         run: |
           git clone https://github.com/markreedz/mrloop.git mrloop && \

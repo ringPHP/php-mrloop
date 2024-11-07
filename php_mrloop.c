@@ -138,9 +138,12 @@ PHP_RSHUTDOWN_FUNCTION(mrloop)
     efree(MRLOOP_G(tcp_cb));
   }
 
-  if (MRLOOP_G(sig_cb))
+  if (MRLOOP_G(sigc) > 0)
   {
-    efree(MRLOOP_G(sig_cb));
+    for (size_t idx = 0; idx < MRLOOP_G(sigc); idx++)
+    {
+      efree(MRLOOP_G(sig_cb)[idx]);
+    }
   }
 
   return SUCCESS;

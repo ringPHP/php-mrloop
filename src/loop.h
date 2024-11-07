@@ -93,7 +93,9 @@ ZEND_BEGIN_MODULE_GLOBALS(mrloop)
 /* TCP server callback */
 php_mrloop_cb_t *tcp_cb;
 /* signal callback */
-php_mrloop_cb_t *sig_cb;
+php_mrloop_cb_t *sig_cb[3];
+/* signal callback count */
+size_t sigc;
 ZEND_END_MODULE_GLOBALS(mrloop)
 /* }}} */
 

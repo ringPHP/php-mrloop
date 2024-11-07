@@ -172,7 +172,7 @@ static void php_mrloop_readv_cb(void *data, int res)
   cb = (php_mrloop_cb_t *)data;
   iov = (php_iovec_t *)cb->data;
 
-  char next[iov->iov_len];
+  char next[(size_t)iov->iov_len];
   sprintf(next, "%.*s", (int)iov->iov_len, (char *)iov->iov_base);
 
   ZVAL_STRING(&args[0], next);
@@ -434,23 +434,32 @@ static void php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAMETERS)
 
 static void php_mrloop_signal_cb(int sig)
 {
-  zval result;
-  int fsignal;
-
-  MRLOOP_G(sig_cb)->fci.retval = &result;
-  MRLOOP_G(sig_cb)->fci.param_count = 0;
-  MRLOOP_G(sig_cb)->fci.params = NULL;
-
-  fsignal = MRLOOP_G(sig_cb)->signal;
-
-  if (fsignal == sig)
+  for (size_t idx = 0; idx < MRLOOP_G(sigc); idx++)
   {
-    if (zend_call_function(&MRLOOP_G(sig_cb)->fci, &MRLOOP_G(sig_cb)->fci_cache) == FAILURE)
+    if (MRLOOP_G(sig_cb)[idx] == NULL)
     {
-      PHP_MRLOOP_THROW("There is an error in your callback");
+      break;
     }
 
-    zval_ptr_dtor(&result);
+    php_mrloop_cb_t *cb = MRLOOP_G(sig_cb)[idx];
+
+    if (cb->signal == sig)
+    {
+      zval result;
+
+      cb->fci.retval = &result;
+      cb->fci.param_count = 0;
+      cb->fci.params = NULL;
+
+      if (zend_call_function(&cb->fci, &cb->fci_cache) == FAILURE)
+      {
+        PHP_MRLOOP_THROW("There is an error in your callback");
+      }
+
+      zval_ptr_dtor(&result);
+
+      break;
+    }
   }
 
   exit(EXIT_SUCCESS);
@@ -466,9 +475,12 @@ static void php_mrloop_add_signal(INTERNAL_FUNCTION_PARAMETERS)
   Z_PARAM_FUNC(fci, fci_cache)
   ZEND_PARSE_PARAMETERS_END();
 
-  MRLOOP_G(sig_cb) = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(MRLOOP_G(sig_cb), fci, fci_cache);
-  MRLOOP_G(sig_cb)->signal = (int)php_signal;
+  MRLOOP_G(sigc)++;
+  size_t next = MRLOOP_G(sigc) - 1;
+
+  MRLOOP_G(sig_cb)[next] = emalloc(sizeof(php_mrloop_cb_t));
+  PHP_CB_TO_MRLOOP_CB(MRLOOP_G(sig_cb)[next], fci, fci_cache);
+  MRLOOP_G(sig_cb)[next]->signal = (int)php_signal;
 
   signal(SIGINT, php_mrloop_signal_cb);
   signal(SIGHUP, php_mrloop_signal_cb);
@@ -533,7 +545,7 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
     return;
   }
 
-  fnbytes = (size_t)(nbytes_null == true ? DEFAULT_STREAM_BUFF_LEN : fnbytes);
+  fnbytes = (size_t)(nbytes_null == true ? DEFAULT_STREAM_BUFF_LEN : nbytes);
 
   iov = emalloc(sizeof(php_iovec_t));
   iov->iov_base = emalloc(fnbytes);

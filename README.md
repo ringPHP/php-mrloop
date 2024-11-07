@@ -8,7 +8,7 @@ PHP has, in recent years, seen an emergence of eventware built atop potent multi
 
 ## Requirements
 
-- PHP 8 or newer
+- PHP 8.1 or newer
 - Linux Kernel 5.4.1 or newer
 - [mrloop](https://github.com/markreedz/mrloop)
 - [liburing](https://github.com/axboe/liburing)

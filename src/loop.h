@@ -9,6 +9,8 @@
 #include "ext/standard/php_string.h"
 #include "ext/standard/php_var.h"
 #include "zend_exceptions.h"
+#include "php_network.h"
+#include "php_streams.h"
 #include "sys/file.h"
 #include "signal.h"
 #include "mrloop.c"
@@ -21,7 +23,7 @@
   ZEND_PARSE_PARAMETERS_END()
 #endif
 
-#define DEFAULT_SHELL_BUFF_LEN 8192
+#define DEFAULT_STREAM_BUFF_LEN 8192
 #define DEFAULT_CONN_BUFF_LEN 65536
 #define DEFAULT_HTTP_HEADER_LIMIT 100
 #define PHP_MRLOOP_TIMER 1
@@ -91,7 +93,9 @@ ZEND_BEGIN_MODULE_GLOBALS(mrloop)
 /* TCP server callback */
 php_mrloop_cb_t *tcp_cb;
 /* signal callback */
-php_mrloop_cb_t *sig_cb;
+php_mrloop_cb_t *sig_cb[3];
+/* signal callback count */
+size_t sigc;
 ZEND_END_MODULE_GLOBALS(mrloop)
 /* }}} */
 
@@ -129,17 +133,8 @@ static void php_mrloop_add_periodic_timer(INTERNAL_FUNCTION_PARAMETERS);
 
 /* mrloop-bound callback specified during invocation of vectorized read function */
 static void php_mrloop_readv_cb(void *data, int res);
-/* executes a non-blocking file read operation */
-static void php_mrloop_file_readv(INTERNAL_FUNCTION_PARAMETERS);
-/* opens a process, executes it in a non-blocking fashion, and relays the shell output stream */
-static void php_mrloop_proc_readv(INTERNAL_FUNCTION_PARAMETERS);
-
 /* mrloop-bound callback specified during invocation of vectorized write function */
 static void php_mrloop_writev_cb(void *data, int res);
-/* opens a process, funnels input into its writable stream and thence executes it in a non-blocking fashion  */
-static void php_mrloop_proc_writev(INTERNAL_FUNCTION_PARAMETERS);
-/* executes a non-blocking file write operation */
-static void php_mrloop_file_writev(INTERNAL_FUNCTION_PARAMETERS);
 
 /* initializes client connection context for TCP server */
 static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize);
@@ -148,12 +143,19 @@ static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *
 /* starts a TCP server */
 static void php_mrloop_tcp_server_listen(INTERNAL_FUNCTION_PARAMETERS);
 /* parses an HTTP request */
-static void php_mrloop_http_parser(INTERNAL_FUNCTION_PARAMETERS);
+static void php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAMETERS);
+/* parses an HTTP response */
+static void php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAMETERS);
 
 /* mrloop-bound callback specified during invocation of signal handlers */
 static void php_mrloop_signal_cb(int sig);
 /* executes specified action in the event that a specified signal is detected */
 static void php_mrloop_add_signal(INTERNAL_FUNCTION_PARAMETERS);
+
+/* funnels file descriptor in readable stream into event loop and thence executes a non-blocking read operation */
+static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS);
+/* funnels file descriptor in writable stream into event loop and thence executes a non-blocking write operation */
+static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS);
 
 zend_class_entry *php_mrloop_ce, *php_mrloop_exception_ce;
 

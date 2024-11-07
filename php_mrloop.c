@@ -42,34 +42,6 @@ PHP_METHOD(Mrloop, addPeriodicTimer)
 }
 /* }}} */
 
-/* {{{ proto void Mrloop::freadv( string file [, ?int nbytes [, ?int offset [, callable callback ]]] ) */
-PHP_METHOD(Mrloop, freadv)
-{
-  php_mrloop_file_readv(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
-/* {{{ proto void Mrloop::preadv( string command [, ?int nbytes [, callable callback ]] ) */
-PHP_METHOD(Mrloop, preadv)
-{
-  php_mrloop_proc_readv(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
-/* {{{ proto void Mrloop::pwritev( string command [, string contents [, callable callback ]] ) */
-PHP_METHOD(Mrloop, pwritev)
-{
-  php_mrloop_proc_writev(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
-/* {{{ proto void Mrloop::fwritev( string file [, string contents [, ?int flags [, callable callback ]]] ) */
-PHP_METHOD(Mrloop, fwritev)
-{
-  php_mrloop_file_writev(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
 /* {{{ proto void Mrloop::tcpServer( int port [, callable callback ] ) */
 PHP_METHOD(Mrloop, tcpServer)
 {
@@ -77,10 +49,17 @@ PHP_METHOD(Mrloop, tcpServer)
 }
 /* }}} */
 
-/* {{{ proto array Mrloop::parseHttp( string request [, int headerlimit = 100 ] ) */
-PHP_METHOD(Mrloop, parseHttp)
+/* {{{ proto array Mrloop::parseHttpRequest( string request [, int headerlimit = 100 ] ) */
+PHP_METHOD(Mrloop, parseHttpRequest)
 {
-  php_mrloop_http_parser(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+  php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
+/* {{{ proto array Mrloop::parseHttpResponse( string request [, int headerlimit = 100 ] ) */
+PHP_METHOD(Mrloop, parseHttpResponse)
+{
+  php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 /* }}} */
 
@@ -88,6 +67,20 @@ PHP_METHOD(Mrloop, parseHttp)
 PHP_METHOD(Mrloop, addSignal)
 {
   php_mrloop_add_signal(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
+/* {{{ proto void Mrloop::addReadStream( resource stream [, ?int nbytes = null [, callable callback ]] ) */
+PHP_METHOD(Mrloop, addReadStream)
+{
+  php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
+/* {{{ proto void Mrloop::addWriteStream( resource stream [, string contents [, callable callback ]] ) */
+PHP_METHOD(Mrloop, addWriteStream)
+{
+  php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 /* }}} */
 
@@ -145,9 +138,12 @@ PHP_RSHUTDOWN_FUNCTION(mrloop)
     efree(MRLOOP_G(tcp_cb));
   }
 
-  if (MRLOOP_G(sig_cb))
+  if (MRLOOP_G(sigc) > 0)
   {
-    efree(MRLOOP_G(sig_cb));
+    for (size_t idx = 0; idx < MRLOOP_G(sigc); idx++)
+    {
+      efree(MRLOOP_G(sig_cb)[idx]);
+    }
   }
 
   return SUCCESS;

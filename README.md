@@ -8,7 +8,7 @@ PHP has, in recent years, seen an emergence of eventware built atop potent multi
 
 ## Requirements
 
-- PHP 8 or newer
+- PHP 8.1 or newer
 - Linux Kernel 5.4.1 or newer
 - [mrloop](https://github.com/markreedz/mrloop)
 - [liburing](https://github.com/axboe/liburing)
@@ -44,30 +44,19 @@ class Mrloop
 
   /* public methods */
   public static init(): Mrloop
-  public freadv(
-    string $file,
-    ?int $offset,
+  public addReadStream(
+    resource $stream,
     ?int $nbytes,
     callable $callback,
   ): void
-  public fwritev(
-    string $file,
-    string $contents,
-    int $flags,
-    callable $callback,
-  ): void
-  public preadv(
-    string $command,
-    ?int $nbytes,
-    callable $callback,
-  ): void
-  public pwritev(
-    string $command,
+  public addWriteStream(
+    resource $stream,
     string $contents,
     callable $callback,
   ): void
   public tcpServer(int $port, callable $callback): void
-  public static parseHttp(string $request, int $headerlimit = 100): iterable
+  public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
+  public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
   public addPeriodicTimer(float $interval, callable $callback): void
   public addSignal(int $signal, callable $callback): void
@@ -75,6 +64,18 @@ class Mrloop
   public stop(): void
 }
 ```
+
+- [`Mrloop::init`](#mrloopinit)
+- [`Mrloop::addReadStream`](#mrloopaddreadstream)
+- [`Mrloop::addWriteStream`](#mrloopaddwritestream)
+- [`Mrloop::tcpServer`](#mrlooptcpserver)
+- [`Mrloop::parseHttpRequest`](#mrloopparsehttprequest)
+- [`Mrloop::parseHttpResponse`](#mrloopparsehttpresponse)
+- [`Mrloop::addTimer`](#mrloopaddtimer)
+- [`Mrloop::addPeriodicTimer`](#mrloopaddperiodictimer)
+- [`Mrloop::addSignal`](#mrloopaddsignal)
+- [`Mrloop::run`](#mrlooprun)
+- [`Mrloop::stop`](#mrloopstop)
 
 ### `Mrloop::init`
 
@@ -122,27 +123,25 @@ Hello, user
 
 ```
 
-### `Mrloop::freadv`
+### `Mrloop::addReadStream`
 
 ```php
-public Mrloop::freadv(
-  string $file,
-  ?int $offset,
+public Mrloop::addReadStream(
+  resource $stream,
   ?int $nbytes,
   callable $callback,
 ): void
 ```
 
-Performs a non-blocking file read operation.
+Funnels file descriptor in readable stream into event loop and thence executes a non-blocking read operation.
 
 **Parameter(s)**
 
-- **file** (string) - The file to read.
-- **offset** (int|null) - The cursor position at which to start the read operation.
-  > Specifying `null` will condition the start of the read operation at the beginning of the file (offset `0`).
+- **stream** (resource) - A userspace-defined readable stream.
+  > The file descriptor in the stream is internally given a non-blocking disposition.
 - **nbytes** (int|null) - The number of bytes to read.
-  > Specifying `null` will condition the termination of a read operation at the end of a file.
-- **callback** (callable) - The unary function through which the file's contents are propagated.
+  > Specifying `null` will condition the use of an 8KB buffer.
+- **callback** (callable) - The binary function through which the file's contents and read result code are propagated.
 
 **Return value(s)**
 
@@ -153,12 +152,15 @@ use ringphp\MrLoop;
 
 $loop = Mrloop::init();
 
-$loop->freadv(
-  '/path/to/file',
-  null, // will default to 0
-  null, // will default to the file size
-  function (string $contents) {
-    echo \sprintf("%s\n", $contents);
+$loop->addReadStream(
+  $fd = \fopen('/path/to/file', 'r'),
+  null,
+  function (string $contents, int $res) use ($fd) {
+    if ($res === 0) {
+      echo \sprintf("%s\n", $contents);
+
+      \fclose($fd);
+    }
   },
 );
 
@@ -172,25 +174,23 @@ File contents...
 
 ```
 
-### `Mrloop::fwritev`
+### `Mrloop::addWriteStream`
 
 ```php
-public fwritev(
-  string $file,
+public Mrloop::addWriteStream(
+  resource $stream,
   string $contents,
-  int $flags,
   callable $callback,
 ): void
 ```
 
-Performs a non-blocking file write operation.
+Funnels file descriptor in writable stream into event loop and thence executes a non-blocking write operation.
 
 **Parameter(s)**
 
-- **file** (string) - The file to write to.
-- **contents** (string) - The contents to write.
-- **flags** (int) - Relevant flags that condition write operations.
-  > All flags that apply to the [`file_put_contents`](https://www.php.net/manual/en/function.file-put-contents.php) function apply here.
+- **stream** (resource) - A userspace-defined writable stream.
+  > The file descriptor in the stream is internally given a non-blocking disposition.
+- **contents** (string) - The contents to write to the file descriptor.
 - **callback** (callable) - The unary function through which the number of written bytes is propagated.
 
 **Return value(s)**
@@ -203,12 +203,14 @@ use ringphp\Mrloop;
 $loop = MrLoop::init();
 
 $file = '/path/to/file';
-$loop->fwritev(
-  $file,
+
+$loop->addWriteStream(
+  $fd = \fopen($file, 'w'),
   "file contents...\n",
-  LOCK_EX,
-  function (int $nbytes) use ($file) {
+  function (int $nbytes) use ($fd, $file) {
     echo \sprintf("Wrote %d bytes to %s\n", $nbytes, $file);
+
+    \fclose($fd);
   },
 );
 
@@ -222,106 +224,10 @@ Wrote 18 bytes to /path/to/file
 
 ```
 
-### `Mrloop::preadv`
-
-```php
-public Mrloop::preadv(
-  string $command,
-  ?int $nbytes,
-  callable $callback,
-): void
-```
-
-Opens a process, executes it in a non-blocking fashion, and relays the shell output stream.
-
-**Parameter(s)**
-
-- **command** (string) - The process to execute.
-- **nbytes** (int|null) - The number of bytes of the output stream to read.
-  > Setting the value to `null` conditions the internal use of a buffer that is `8192` bytes long.
-- **callback** (callable) - The function through which the contents of the shell output stream are propagated.
-
-**Return value(s)**
-
-The function does not return anything.
-
-```php
-use ringphp\Mrloop;
-
-$loop = Mrloop::init();
-
-$loop->preadv(
-  'ls -a',
-  null,
-  function (string $contents) {
-    echo \sprintf("%s\n", $contents);
-  },
-);
-
-$loop->run();
-```
-
-The example above will produce output similar to that in the snippet to follow.
-
-```
-.
-..
-dir-1
-dir-2
-file-1
-file-2
-
-```
-
-### `Mrloop::pwritev`
-
-```php
-public Mrloop::pwritev(
-  string $command,
-  string $contents,
-  callable $callback,
-): void
-```
-
-Opens a process, funnels arbitrary input into its writable stream, and thence executes it in a non-blocking fashion.
-
-**Parameter(s)**
-
-- **command** (string) - The process to execute.
-- **contents** (int|null) - The data to funnel into the process' writable stream.
-- **callback** (callable) - The function through which the contents of the shell output stream are propagated.
-
-**Return value(s)**
-
-The function does not return anything.
-
-```php
-use ringphp\Mrloop;
-
-$loop = Mrloop::init();
-
-$loop->pwritev(
-  'cat >> /path/to/file',
-  'File contents...',
-  function (int $nbytes) {
-    var_dump($nbytes);
-  },
-);
-
-$loop->run();
-```
-
-The example above will produce output similar to that in the snippet to follow.
-
-```
-int(16)
-
-```
-
 ### `Mrloop::tcpServer`
 
 ```php
-public tcpServer(int $port, callable $callback): void
+public Mrloop::tcpServer(int $port, callable $callback): void
 ```
 
 Instantiates a simple TCP server.
@@ -361,7 +267,6 @@ $loop->tcpServer(
       $message,
     );
 
-    // echo server
     return \strtoupper($message);
   },
 );
@@ -377,15 +282,18 @@ The example above will produce output similar to that in the snippet to follow.
 
 ```
 
-### `Mrloop::parseHttp`
+### `Mrloop::parseHttpRequest`
 
 ```php
-public static Mrloop::parseHttp(string $request, int $headerlimit = 100): iterable
+public static Mrloop::parseHttpRequest(
+  string $request,
+  int $headerlimit = 100,
+): iterable
 ```
 
 Parses an HTTP request.
 
-> This is an opt-in function that utilizes the picohttpparser's robust API.
+> This is a function that utilizes the `picohttpparser` API.
 
 **Parameter(s)**
 
@@ -426,7 +334,7 @@ $loop->tcpServer(
       );
 
     try {
-      $request = Mrloop::parseHttp($message);
+      $request = Mrloop::parseHttpRequest($message);
 
       return $response('Hello, user');
     } catch (\Throwable $err) {
@@ -448,10 +356,151 @@ Listening on port 8080
 
 ```
 
+### `Mrloop::parseHttpResponse`
+
+```php
+public static Mrloop::parseHttpResponse(
+  string $response,
+  int $headerlimit = 100,
+): iterable
+```
+
+Parses an HTTP response.
+
+> This function also utilizes the `picohttpparser` API.
+
+**Parameter(s)**
+
+- **response** (string) - The HTTP response to parse.
+- **headerlimit** (int) - The number of headers to parse.
+  > The default limit is `100`.
+
+**Return value(s)**
+
+The parser will throw an exception in the event that an invalid HTTP response is encountered and will output a hashtable with the contents enumerated below otherwise.
+
+- **body** (string) - The response body.
+- **headers** (iterable) - An associative array containing response headers.
+- **status** (int) - The response status code.
+- **reason** (string) - The response reason phrase.
+
+```php
+use ringphp\Mrloop;
+
+$loop = Mrloop::init();
+
+$loop->addWriteStream(
+  $sock = \stream_socket_client('tcp://www.example.com:80'),
+  "GET / HTTP/1.0\r\nHost: www.example.com\r\nAccept: */*\r\n\r\n",
+  function ($nbytes) use ($loop, $sock) {
+    $loop->addReadStream(
+      $sock,
+      null,
+      function ($data, $res) use ($sock, $loop) {
+        var_dump(Mrloop::parseHttpResponse($data));
+
+        \fclose($sock);
+      },
+    );
+  },
+);
+
+$loop->run();
+```
+
+The example above will produce output similar to that in the snippet to follow.
+
+```
+array(4) {
+  ["reason"]=>
+  string(2) "OK"
+  ["status"]=>
+  int(200)
+  ["body"]=>
+  string(1256) "<!doctype html>
+<html>
+<head>
+    <title>Example Domain</title>
+
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type="text/css">
+    body {
+        background-color: #f0f0f2;
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+    }
+    div {
+        width: 600px;
+        margin: 5em auto;
+        padding: 2em;
+        background-color: #fdfdff;
+        border-radius: 0.5em;
+        box-shadow: 2px 3px 7px 2px rgba(0,0,0,0.02);
+    }
+    a:link, a:visited {
+        color: #38488f;
+        text-decoration: none;
+    }
+    @media (max-width: 700px) {
+        div {
+            margin: 0 auto;
+            width: auto;
+        }
+    }
+    </style>
+</head>
+
+<body>
+<div>
+    <h1>Example Domain</h1>
+    <p>This domain is for use in illustrative examples in documents. You may use this
+    domain in literature without prior coordination or asking for permission.</p>
+    <p><a href="https://www.iana.org/domains/example">More information...</a></p>
+</div>
+</body>
+</html>
+"
+  ["headers"]=>
+  array(13) {
+    ["Accept-Ranges"]=>
+    string(5) "bytes"
+    ["Age"]=>
+    string(6) "506325"
+    ["Cache-Control"]=>
+    string(14) "max-age=604800"
+    ["Content-Type"]=>
+    string(24) "text/html; charset=UTF-8"
+    ["Date"]=>
+    string(29) "Wed, 30 Oct 2024 15:37:43 GMT"
+    ["Etag"]=>
+    string(17) ""3147526947+gzip""
+    ["Expires"]=>
+    string(29) "Wed, 06 Nov 2024 15:37:43 GMT"
+    ["Last-Modified"]=>
+    string(29) "Thu, 17 Oct 2019 07:18:26 GMT"
+    [""]=>
+    string(16) "ECAcc (dcd/7D5A)"
+    ["Vary"]=>
+    string(15) "Accept-Encoding"
+    ["X-Cache"]=>
+    string(3) "HIT"
+    ["Content-Length"]=>
+    string(4) "1256"
+    ["Connection"]=>
+    string(5) "close"
+  }
+}
+
+```
+
 ### `Mrloop::addTimer`
 
 ```php
-public addTimer(float $interval, callable $callback): void
+public Mrloop::addTimer(float $interval, callable $callback): void
 ```
 
 Executes a specified action after a specified amount of time.
@@ -490,7 +539,7 @@ Hello, user
 ### `Mrloop::addPeriodicTimer`
 
 ```php
-public addPeriodicTimer(float $interval, callable $callback): void
+public Mrloop::addPeriodicTimer(float $interval, callable $callback): void
 ```
 
 Executes a specified action in perpetuity with each successive execution occurring after a specified time interval.
@@ -499,6 +548,7 @@ Executes a specified action in perpetuity with each successive execution occurri
 
 - **interval** (float) - The interval (in seconds) between successive executions of a specified action.
 - **callback** (callable) - The function in which the specified action due for periodical execution is defined.
+  > A return value of `0` will cancel the timer.
 
 **Return value(s)**
 
@@ -516,7 +566,7 @@ $loop->addPeriodicTimer(
     echo \sprintf("Tick: %d\n", ++$tick);
 
     if ($tick === 5) {
-      $loop->stop();
+      $loop->stop(); // return 0;
     }
   },
 );
@@ -537,7 +587,7 @@ Tick: 5
 ### `Mrloop::addSignal`
 
 ```php
-public addSignal(int $signal, callable $callback): void
+public Mrloop::addSignal(int $signal, callable $callback): void
 ```
 
 Performs a specified action in the event that a specified signal is detected.
@@ -557,12 +607,15 @@ use ringphp\Mrloop;
 
 $loop = Mrloop::init();
 
-$loop->freadv(
-  '/path/to/file',
+$loop->addReadStream(
+  $fd = \fopen('/path/to/file', 'r'),
   null,
-  null,
-  function (string $contents) {
+  function (...$args) use ($fd) {
+    [$contents] = $args;
+
     echo \sprintf("%s\n", $contents);
+
+    \fclose($fd);
   },
 );
 
@@ -626,12 +679,13 @@ use ringphp\Mrloop;
 
 $loop = Mrloop::init();
 
-$loop->readv(
-  '/path/to/file',
-  null,
-  null,
-  function (string $contents) use ($loop) {
+$loop->addReadStream(
+  $fd = \fopen('/path/to/file', 'r'),
+  'File contents...',
+  function ($contents, $res) use ($fd, $loop) {
     echo \sprintf("%s\n", $contents);
+
+    \fclose($fd);
 
     $loop->stop();
   },

@@ -90,6 +90,15 @@ static int php_mrloop_timer_cb(void *data)
     return 0;
   }
 
+  // add explicit timer cancellation to periodic timer
+  if (type == PHP_MRLOOP_PERIODIC_TIMER && Z_TYPE(result) == IS_LONG && Z_LVAL(result) == 0)
+  {
+    zval_ptr_dtor(&result);
+    efree(cb);
+
+    return 0;
+  }
+
   zval_ptr_dtor(&result);
   efree(cb);
 
@@ -163,7 +172,10 @@ static void php_mrloop_readv_cb(void *data, int res)
   cb = (php_mrloop_cb_t *)data;
   iov = (php_iovec_t *)cb->data;
 
-  ZVAL_STRING(&args[0], (char *)iov->iov_base);
+  char next[(size_t)iov->iov_len];
+  sprintf(next, "%.*s", (int)iov->iov_len, (char *)iov->iov_base);
+
+  ZVAL_STRING(&args[0], next);
   ZVAL_LONG(&args[1], res);
 
   cb->fci.retval = &result;
@@ -181,152 +193,6 @@ static void php_mrloop_readv_cb(void *data, int res)
 
   return;
 }
-static void php_mrloop_file_readv(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zval *obj;
-  php_mrloop_t *this;
-  php_mrloop_cb_t *cb;
-  php_iovec_t *iov;
-  zend_string *file;
-  zend_fcall_info fci;
-  zend_fcall_info_cache fci_cache;
-  zend_long nbytes, offset;
-  bool nbytes_null, offset_null;
-  int fd;
-  size_t fnbytes, foffset;
-  php_stat_t sb;
-
-  obj = getThis();
-  nbytes_null = true;
-  offset_null = true;
-  fci = empty_fcall_info;
-  fci_cache = empty_fcall_info_cache;
-
-  ZEND_PARSE_PARAMETERS_START(4, 4)
-  Z_PARAM_STR(file)
-  Z_PARAM_LONG_OR_NULL(nbytes, nbytes_null)
-  Z_PARAM_LONG_OR_NULL(offset, offset_null)
-  Z_PARAM_FUNC(fci, fci_cache)
-  ZEND_PARSE_PARAMETERS_END();
-
-  this = PHP_MRLOOP_OBJ(obj);
-
-  fd = open(ZSTR_VAL(file), O_RDONLY | O_NONBLOCK);
-
-  if (fd < 0)
-  {
-    char *error = strerror(errno);
-    close(fd);
-
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  if (fstat(fd, &sb) < 0)
-  {
-    char *error = strerror(errno);
-    close(fd);
-
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  fnbytes = (size_t)(nbytes_null == false ? nbytes : sb.st_size);
-  foffset = (size_t)(offset_null == false ? offset : 0);
-
-  iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(fnbytes);
-  iov->iov_len = fnbytes;
-
-  cb = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
-
-  cb->data = iov;
-
-  mr_readvcb(this->loop, fd, iov, 1, foffset, cb, php_mrloop_readv_cb);
-  mr_flush(this->loop);
-
-  return;
-}
-static void php_mrloop_proc_readv(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zval *obj;
-  php_mrloop_t *this;
-  php_mrloop_cb_t *cb;
-  php_iovec_t *iov;
-  zend_string *command;
-  zend_fcall_info fci;
-  zend_fcall_info_cache fci_cache;
-  zend_long nbytes;
-  bool nbytes_null;
-  int fd;
-  size_t fnbytes;
-  FILE *pfd;
-
-  obj = getThis();
-  nbytes_null = true;
-  fci = empty_fcall_info;
-  fci_cache = empty_fcall_info_cache;
-
-  ZEND_PARSE_PARAMETERS_START(3, 3)
-  Z_PARAM_STR(command)
-  Z_PARAM_LONG_OR_NULL(nbytes, nbytes_null)
-  Z_PARAM_FUNC(fci, fci_cache)
-  ZEND_PARSE_PARAMETERS_END();
-
-  this = PHP_MRLOOP_OBJ(obj);
-  pfd = popen(ZSTR_VAL(command), "r");
-
-  if ((fd = fileno(pfd)) < 0)
-  {
-    close(fd);
-    pclose(pfd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
-  {
-    close(fd);
-    pclose(pfd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  fnbytes = (size_t)(nbytes_null == false ? nbytes : DEFAULT_SHELL_BUFF_LEN);
-
-  iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(fnbytes);
-  iov->iov_len = fnbytes;
-
-  cb = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
-
-  cb->data = iov;
-
-  mr_readvcb(this->loop, fd, iov, 1, 0, cb, php_mrloop_readv_cb);
-  mr_flush(this->loop);
-  pclose(pfd);
-
-  return;
-}
-
 static void php_mrloop_writev_cb(void *data, int res)
 {
   php_mrloop_cb_t *cb = (php_mrloop_cb_t *)data;
@@ -345,157 +211,6 @@ static void php_mrloop_writev_cb(void *data, int res)
   zval_ptr_dtor(&result);
   efree(cb->data);
   efree(cb);
-
-  return;
-}
-static void php_mrloop_proc_writev(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zval *obj;
-  php_mrloop_t *this;
-  php_mrloop_cb_t *cb;
-  php_iovec_t *iov;
-  zend_string *command, *contents;
-  zend_fcall_info fci;
-  zend_fcall_info_cache fci_cache;
-  int fd;
-  FILE *pfd;
-  size_t nbytes;
-
-  obj = getThis();
-  fci = empty_fcall_info;
-  fci_cache = empty_fcall_info_cache;
-
-  ZEND_PARSE_PARAMETERS_START(3, 3)
-  Z_PARAM_STR(command)
-  Z_PARAM_STR(contents)
-  Z_PARAM_FUNC(fci, fci_cache)
-  ZEND_PARSE_PARAMETERS_END();
-
-  this = PHP_MRLOOP_OBJ(obj);
-  pfd = popen(ZSTR_VAL(command), "w");
-
-  if ((fd = fileno(pfd)) < 0)
-  {
-    close(fd);
-    pclose(pfd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
-  {
-    close(fd);
-    pclose(pfd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
-
-  nbytes = ZSTR_LEN(contents);
-
-  iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(nbytes);
-  iov->iov_len = nbytes;
-
-  strcpy(iov->iov_base, ZSTR_VAL(contents));
-
-  cb = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
-
-  cb->data = iov;
-
-  mr_writevcb(this->loop, fd, iov, 1, cb, php_mrloop_writev_cb);
-  mr_flush(this->loop);
-  pclose(pfd);
-
-  return;
-}
-static void php_mrloop_file_writev(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zval *obj;
-  php_mrloop_t *this;
-  php_mrloop_cb_t *cb;
-  php_iovec_t *iov;
-  zend_string *file, *contents;
-  zend_fcall_info fci;
-  zend_fcall_info_cache fci_cache;
-  int fd;
-  zend_long flags;
-  size_t nbytes;
-  bool flags_null;
-
-  obj = getThis();
-  fci = empty_fcall_info;
-  fci_cache = empty_fcall_info_cache;
-  flags_null = true;
-
-  ZEND_PARSE_PARAMETERS_START(4, 4)
-  Z_PARAM_STR(file)
-  Z_PARAM_STR(contents)
-  Z_PARAM_LONG_OR_NULL(flags, flags_null)
-  Z_PARAM_FUNC(fci, fci_cache)
-  ZEND_PARSE_PARAMETERS_END();
-
-  this = PHP_MRLOOP_OBJ(obj);
-
-  // contains FILE_APPEND; might also contain LOCK_EX
-  if (flags == 8 || flags == 10)
-  {
-    fd = open(ZSTR_VAL(file), O_APPEND | O_RDWR | O_NONBLOCK);
-  }
-  else
-  {
-    fd = open(ZSTR_VAL(file), O_CREAT | O_WRONLY | O_TRUNC | O_NONBLOCK, S_IRWXU);
-  }
-
-  if (fd < 0)
-  {
-    char *error = strerror(errno);
-    close(fd);
-
-    PHP_MRLOOP_THROW(error);
-
-    return;
-  }
-
-  // contains LOCK_EX
-  if (flags == 2 || flags == 10)
-  {
-    // apply advisory lock
-    if (flock(fd, LOCK_EX | LOCK_NB) < 0)
-    {
-      char *error = strerror(errno);
-      close(fd);
-
-      PHP_MRLOOP_THROW(error);
-
-      return;
-    }
-  }
-
-  nbytes = ZSTR_LEN(contents);
-  iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(nbytes);
-  iov->iov_len = nbytes;
-
-  strcpy(iov->iov_base, ZSTR_VAL(contents));
-
-  cb = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
-
-  cb->data = iov;
-
-  mr_writevcb(this->loop, fd, iov, 1, cb, php_mrloop_writev_cb);
-  mr_flush(this->loop);
 
   return;
 }
@@ -596,7 +311,7 @@ static void php_mrloop_tcp_server_listen(INTERNAL_FUNCTION_PARAMETERS)
 
   return;
 }
-static void php_mrloop_http_parser(INTERNAL_FUNCTION_PARAMETERS)
+static void php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAMETERS)
 {
   zend_string *request;
   int http_parser, http_minor_version;
@@ -624,7 +339,7 @@ static void php_mrloop_http_parser(INTERNAL_FUNCTION_PARAMETERS)
 
   if (http_parser < 0)
   {
-    PHP_MRLOOP_THROW("There is an error in the HTTP syntax");
+    PHP_MRLOOP_THROW("There is an error in the HTTP request syntax");
     RETURN_NULL();
   }
 
@@ -658,26 +373,93 @@ static void php_mrloop_http_parser(INTERNAL_FUNCTION_PARAMETERS)
 
   RETURN_ZVAL(&retval, 0, 1);
 }
+static void php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAMETERS)
+{
+  zend_string *response;
+  int http_parser, http_minor_version, http_status;
+  zval retval, retval_headers;
+  char *message;
+  size_t header_count, message_len, buffer_len;
+  zend_long header_limit = DEFAULT_HTTP_HEADER_LIMIT;
+
+  ZEND_PARSE_PARAMETERS_START(1, 2)
+  Z_PARAM_STR(response)
+  Z_PARAM_OPTIONAL
+  Z_PARAM_LONG(header_limit)
+  ZEND_PARSE_PARAMETERS_END();
+
+  buffer_len = ZSTR_LEN(response);
+  phr_header_t headers[(size_t)header_limit];
+  char buffer[(size_t)buffer_len];
+
+  header_count = sizeof(headers) / sizeof(headers[0]);
+  strcpy(buffer, ZSTR_VAL(response));
+
+  http_parser = phr_parse_response(
+    buffer, buffer_len, &http_minor_version, &http_status, (const char **)&message,
+    &message_len, headers, &header_count, 0);
+
+  if (http_parser < 0)
+  {
+    PHP_MRLOOP_THROW("There is an error in the HTTP response syntax");
+    RETURN_NULL();
+  }
+
+  array_init(&retval);
+  array_init(&retval_headers);
+
+  char tmp_message[message_len], *body;
+  sprintf(tmp_message, "%.*s", (int)message_len, message);
+  body = buffer + http_parser;
+
+  add_assoc_string(&retval, "reason", tmp_message);
+  add_assoc_long(&retval, "status", http_status);
+  add_assoc_string(&retval, "body", body);
+
+  for (size_t idx = 0; idx < header_count; idx++)
+  {
+    if (headers[idx].name && headers[idx].value)
+    {
+      char tmp_header_name[headers[idx].name_len], tmp_header_value[headers[idx].value_len];
+      sprintf(tmp_header_name, "%.*s", (int)headers[idx].name_len, headers[idx].name);
+      sprintf(tmp_header_value, "%.*s", (int)headers[idx].value_len, headers[idx].value);
+
+      add_assoc_string(&retval_headers, tmp_header_name, tmp_header_value);
+    }
+  }
+
+  add_assoc_zval(&retval, "headers", &retval_headers);
+  RETURN_ZVAL(&retval, 0, 1);
+}
 
 static void php_mrloop_signal_cb(int sig)
 {
-  zval result;
-  int fsignal;
-
-  MRLOOP_G(sig_cb)->fci.retval = &result;
-  MRLOOP_G(sig_cb)->fci.param_count = 0;
-  MRLOOP_G(sig_cb)->fci.params = NULL;
-
-  fsignal = MRLOOP_G(sig_cb)->signal;
-
-  if (fsignal == sig)
+  for (size_t idx = 0; idx < MRLOOP_G(sigc); idx++)
   {
-    if (zend_call_function(&MRLOOP_G(sig_cb)->fci, &MRLOOP_G(sig_cb)->fci_cache) == FAILURE)
+    if (MRLOOP_G(sig_cb)[idx] == NULL)
     {
-      PHP_MRLOOP_THROW("There is an error in your callback");
+      break;
     }
 
-    zval_ptr_dtor(&result);
+    php_mrloop_cb_t *cb = MRLOOP_G(sig_cb)[idx];
+
+    if (cb->signal == sig)
+    {
+      zval result;
+
+      cb->fci.retval = &result;
+      cb->fci.param_count = 0;
+      cb->fci.params = NULL;
+
+      if (zend_call_function(&cb->fci, &cb->fci_cache) == FAILURE)
+      {
+        PHP_MRLOOP_THROW("There is an error in your callback");
+      }
+
+      zval_ptr_dtor(&result);
+
+      break;
+    }
   }
 
   exit(EXIT_SUCCESS);
@@ -693,13 +475,157 @@ static void php_mrloop_add_signal(INTERNAL_FUNCTION_PARAMETERS)
   Z_PARAM_FUNC(fci, fci_cache)
   ZEND_PARSE_PARAMETERS_END();
 
-  MRLOOP_G(sig_cb) = emalloc(sizeof(php_mrloop_cb_t));
-  PHP_CB_TO_MRLOOP_CB(MRLOOP_G(sig_cb), fci, fci_cache);
-  MRLOOP_G(sig_cb)->signal = (int)php_signal;
+  MRLOOP_G(sigc)++;
+  size_t next = MRLOOP_G(sigc) - 1;
+
+  MRLOOP_G(sig_cb)[next] = emalloc(sizeof(php_mrloop_cb_t));
+  PHP_CB_TO_MRLOOP_CB(MRLOOP_G(sig_cb)[next], fci, fci_cache);
+  MRLOOP_G(sig_cb)[next]->signal = (int)php_signal;
 
   signal(SIGINT, php_mrloop_signal_cb);
   signal(SIGHUP, php_mrloop_signal_cb);
   signal(SIGTERM, php_mrloop_signal_cb);
+
+  return;
+}
+
+static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
+{
+  zval *res, *obj;
+  php_mrloop_t *this;
+  php_mrloop_cb_t *cb;
+  php_iovec_t *iov;
+  zend_fcall_info fci;
+  zend_fcall_info_cache fci_cache;
+  zend_long nbytes;
+  bool nbytes_null;
+  int fd; // php_socket_t fd;
+  php_stream *stream;
+  size_t fnbytes;
+
+  obj = getThis();
+  nbytes_null = true;
+  fci = empty_fcall_info;
+  fci_cache = empty_fcall_info_cache;
+  fd = -1;
+
+  ZEND_PARSE_PARAMETERS_START(3, 3)
+  Z_PARAM_RESOURCE(res)
+  Z_PARAM_LONG_OR_NULL(nbytes, nbytes_null)
+  Z_PARAM_FUNC(fci, fci_cache)
+  ZEND_PARSE_PARAMETERS_END();
+
+  this = PHP_MRLOOP_OBJ(obj);
+
+  // convert resource to PHP stream
+  if ((stream = (php_stream *)zend_fetch_resource_ex(res, NULL, php_file_le_stream())))
+  {
+    // extract file descriptor from resource stream
+    if (php_stream_cast(stream, PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL, (void *)&fd, 1) == FAILURE || fd < 0)
+    {
+      PHP_MRLOOP_THROW("Passed resource without file descriptor");
+      RETURN_NULL();
+
+      close(fd);
+
+      return;
+    }
+  }
+
+  // set non-blocking mode
+  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
+  {
+    close(fd);
+
+    char *error = strerror(errno);
+    PHP_MRLOOP_THROW(error);
+
+    mr_stop(this->loop);
+
+    return;
+  }
+
+  fnbytes = (size_t)(nbytes_null == true ? DEFAULT_STREAM_BUFF_LEN : nbytes);
+
+  iov = emalloc(sizeof(php_iovec_t));
+  iov->iov_base = emalloc(fnbytes);
+  iov->iov_len = fnbytes;
+
+  cb = emalloc(sizeof(php_mrloop_cb_t));
+  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
+
+  cb->data = iov;
+
+  mr_readvcb(this->loop, fd, iov, 1, 0, cb, php_mrloop_readv_cb);
+  mr_flush(this->loop);
+
+  return;
+}
+static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
+{
+  zval *res, *obj;
+  zend_string *contents;
+  php_mrloop_t *this;
+  php_mrloop_cb_t *cb;
+  php_iovec_t *iov;
+  zend_fcall_info fci;
+  zend_fcall_info_cache fci_cache;
+  int fd;
+  php_stream *stream;
+  size_t nbytes;
+
+  obj = getThis();
+  fci = empty_fcall_info;
+  fci_cache = empty_fcall_info_cache;
+  fd = -1;
+
+  ZEND_PARSE_PARAMETERS_START(3, 3)
+  Z_PARAM_RESOURCE(res)
+  Z_PARAM_STR(contents)
+  Z_PARAM_FUNC(fci, fci_cache)
+  ZEND_PARSE_PARAMETERS_END();
+
+  this = PHP_MRLOOP_OBJ(obj);
+
+  if ((stream = (php_stream *)zend_fetch_resource_ex(res, NULL, php_file_le_stream())))
+  {
+    if (php_stream_cast(stream, PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL, (void *)&fd, 1) == FAILURE || fd < 0)
+    {
+      PHP_MRLOOP_THROW("Passed resource without file descriptor");
+      RETURN_NULL();
+
+      close(fd);
+
+      return;
+    }
+  }
+
+  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
+  {
+    close(fd);
+
+    char *error = strerror(errno);
+    PHP_MRLOOP_THROW(error);
+
+    mr_stop(this->loop);
+
+    return;
+  }
+
+  nbytes = ZSTR_LEN(contents);
+  iov = emalloc(sizeof(php_iovec_t));
+  iov->iov_base = emalloc(nbytes);
+  iov->iov_len = nbytes;
+
+  strcpy(iov->iov_base, ZSTR_VAL(contents));
+
+  cb = emalloc(sizeof(php_mrloop_cb_t));
+  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
+
+  cb->data = iov;
+
+  mr_writevcb(this->loop, fd, iov, 1, cb, php_mrloop_writev_cb);
+  mr_flush(this->loop);
 
   return;
 }

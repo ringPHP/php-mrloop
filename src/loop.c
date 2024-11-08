@@ -261,13 +261,13 @@ static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *
   array_init(&args[1]);
   add_assoc_string(&args[1], "client_addr", (char *)client->addr);
   add_assoc_long(&args[1], "client_port", client->port);
+  add_assoc_long(&args[1], "client_fd", client->fd);
 
   MRLOOP_G(tcp_cb)->fci.retval = &result;
   MRLOOP_G(tcp_cb)->fci.param_count = 2;
   MRLOOP_G(tcp_cb)->fci.params = args;
 
-  if (zend_call_function(&MRLOOP_G(tcp_cb)->fci, &MRLOOP_G(tcp_cb)->fci_cache) == FAILURE ||
-      Z_TYPE(result) != IS_STRING)
+  if (zend_call_function(&MRLOOP_G(tcp_cb)->fci, &MRLOOP_G(tcp_cb)->fci_cache) == FAILURE)
   {
     PHP_MRLOOP_THROW("There is an error in your callback");
     zval_ptr_dtor(&result);
@@ -275,11 +275,15 @@ static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *
     return 1;
   }
 
-  client->iov.iov_base = Z_STRVAL(result);
-  client->iov.iov_len = Z_STRLEN(result);
+  if (Z_TYPE(result) == IS_STRING)
+  {
+    client->iov.iov_base = Z_STRVAL(result);
+    client->iov.iov_len = Z_STRLEN(result);
 
-  mr_writev(loop, client->fd, &(client->iov), 1);
-  mr_flush(loop);
+    mr_writev(loop, client->fd, &(client->iov), 1);
+    mr_flush(loop);
+  }
+
   zval_ptr_dtor(&result);
 
   return 1;
@@ -628,4 +632,37 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
   mr_flush(this->loop);
 
   return;
+}
+static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS)
+{
+  zend_long fd;
+  zend_string *contents;
+  php_iovec_t iov;
+  php_mrloop_t *this;
+  zval *obj;
+  size_t nbytes;
+
+  obj = getThis();
+
+  ZEND_PARSE_PARAMETERS_START(2, 2)
+  Z_PARAM_LONG(fd)
+  Z_PARAM_STR(contents)
+  ZEND_PARSE_PARAMETERS_END();
+
+  this = PHP_MRLOOP_OBJ(obj);
+
+  if (fcntl((int)fd, F_GETFD) < 0)
+  {
+    PHP_MRLOOP_THROW("Detected invalid file descriptor");
+    mr_stop(this->loop);
+
+    return;
+  }
+
+  nbytes = ZSTR_LEN(contents);
+  iov.iov_base = ZSTR_VAL(contents);
+  iov.iov_len = nbytes;
+
+  mr_writev(this->loop, fd, &iov, 1);
+  mr_flush(this->loop);
 }

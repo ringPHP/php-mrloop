@@ -156,6 +156,8 @@ static void php_mrloop_add_signal(INTERNAL_FUNCTION_PARAMETERS);
 static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS);
 /* funnels file descriptor in writable stream into event loop and thence executes a non-blocking write operation */
 static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS);
+/* performs vectorized non-blocking write operation on a specified file descriptor */
+static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS);
 
 zend_class_entry *php_mrloop_ce, *php_mrloop_exception_ce;
 

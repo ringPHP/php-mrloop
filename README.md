@@ -55,6 +55,7 @@ class Mrloop
     callable $callback,
   ): void
   public tcpServer(int $port, callable $callback): void
+  public writev(int $fd, string $message): void
   public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
   public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
@@ -69,6 +70,7 @@ class Mrloop
 - [`Mrloop::addReadStream`](#mrloopaddreadstream)
 - [`Mrloop::addWriteStream`](#mrloopaddwritestream)
 - [`Mrloop::tcpServer`](#mrlooptcpserver)
+- [`Mrloop::writev`](#mrloopwritev)
 - [`Mrloop::parseHttpRequest`](#mrloopparsehttprequest)
 - [`Mrloop::parseHttpResponse`](#mrloopparsehttpresponse)
 - [`Mrloop::addTimer`](#mrloopaddtimer)
@@ -242,6 +244,7 @@ Instantiates a simple TCP server.
     - **client** (iterable) - An array containing client socket information.
       - **client_addr** (string) - The client IP address.
       - **client_port** (integer) - The client socket port.
+      - **client_fd** (integer) - The client socket file descriptor.
 
 **Return value(s)**
 
@@ -279,6 +282,60 @@ The example above will produce output similar to that in the snippet to follow.
 ```
 2022-09-24T22:26:56+00:00 127.0.0.1:66521 foo
 2022-09-24T22:26:59+00:00 127.0.0.1:67533 bar
+
+```
+
+### `Mrloop::writev`
+
+```php
+public Mrloop::writev(int $fd, string $contents): void
+```
+
+Performs vectorized non-blocking write operation on a specified file descriptor.
+
+**Parameter(s)**
+
+- **fd** (integer) - The file descriptor to write to.
+- **contents** (string) - The arbitrary contents to write.
+
+**Return value(s)**
+
+The parser will throw an exception in the event that an invalid file descriptor is encountered and will not return anything otherwise.
+
+```php
+use ringphp\Mrloop;
+
+$loop = Mrloop::init();
+
+$loop->tcpServer(
+  8080,
+  function (string $message, iterable $client) use ($loop) {
+    [
+      'client_addr' => $addr,
+      'client_port' => $port,
+      'client_fd'   => $fd,
+    ] = $client;
+
+    $loop->writev(
+      $fd,
+      \sprintf(
+        "Hello, %s:%d\r\n",
+        $addr,
+        $port,
+      ),
+    );
+  },
+);
+
+echo "Listening on port 8080\n";
+
+$loop->run();
+```
+
+The example above will produce output similar to that in the snippet to follow.
+
+```
+Listening on port 8080
 
 ```
 

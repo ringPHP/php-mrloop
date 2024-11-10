@@ -55,10 +55,12 @@ class Mrloop
     callable $callback,
   ): void
   public tcpServer(int $port, callable $callback): void
+  public writev(int $fd, string $message): void
   public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
   public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
   public addPeriodicTimer(float $interval, callable $callback): void
+  public futureTick(callable $callback): void
   public addSignal(int $signal, callable $callback): void
   public run(): void
   public stop(): void
@@ -69,10 +71,12 @@ class Mrloop
 - [`Mrloop::addReadStream`](#mrloopaddreadstream)
 - [`Mrloop::addWriteStream`](#mrloopaddwritestream)
 - [`Mrloop::tcpServer`](#mrlooptcpserver)
+- [`Mrloop::writev`](#mrloopwritev)
 - [`Mrloop::parseHttpRequest`](#mrloopparsehttprequest)
 - [`Mrloop::parseHttpResponse`](#mrloopparsehttpresponse)
 - [`Mrloop::addTimer`](#mrloopaddtimer)
 - [`Mrloop::addPeriodicTimer`](#mrloopaddperiodictimer)
+- [`Mrloop::futureTick`](#mrloopfuturetick)
 - [`Mrloop::addSignal`](#mrloopaddsignal)
 - [`Mrloop::run`](#mrlooprun)
 - [`Mrloop::stop`](#mrloopstop)
@@ -242,6 +246,7 @@ Instantiates a simple TCP server.
     - **client** (iterable) - An array containing client socket information.
       - **client_addr** (string) - The client IP address.
       - **client_port** (integer) - The client socket port.
+      - **client_fd** (integer) - The client socket file descriptor.
 
 **Return value(s)**
 
@@ -279,6 +284,60 @@ The example above will produce output similar to that in the snippet to follow.
 ```
 2022-09-24T22:26:56+00:00 127.0.0.1:66521 foo
 2022-09-24T22:26:59+00:00 127.0.0.1:67533 bar
+
+```
+
+### `Mrloop::writev`
+
+```php
+public Mrloop::writev(int $fd, string $contents): void
+```
+
+Performs vectorized non-blocking write operation on a specified file descriptor.
+
+**Parameter(s)**
+
+- **fd** (integer) - The file descriptor to write to.
+- **contents** (string) - The arbitrary contents to write.
+
+**Return value(s)**
+
+The parser will throw an exception in the event that an invalid file descriptor is encountered and will not return anything otherwise.
+
+```php
+use ringphp\Mrloop;
+
+$loop = Mrloop::init();
+
+$loop->tcpServer(
+  8080,
+  function (string $message, iterable $client) use ($loop) {
+    [
+      'client_addr' => $addr,
+      'client_port' => $port,
+      'client_fd'   => $fd,
+    ] = $client;
+
+    $loop->writev(
+      $fd,
+      \sprintf(
+        "Hello, %s:%d\r\n",
+        $addr,
+        $port,
+      ),
+    );
+  },
+);
+
+echo "Listening on port 8080\n";
+
+$loop->run();
+```
+
+The example above will produce output similar to that in the snippet to follow.
+
+```
+Listening on port 8080
 
 ```
 
@@ -582,6 +641,50 @@ Tick: 2
 Tick: 3
 Tick: 4
 Tick: 5
+```
+
+### `Mrloop::futureTick`
+
+```php
+public Mrloop::futureTick(callable $callback): void
+```
+
+Schedules the execution of a specified action for the next event loop tick.
+
+**Parameter(s)**
+
+- **callback** (callable) - The function in which the action to be scheduled is defined.
+
+**Return value(s)**
+
+The function does not return anything.
+
+```php
+use ringphp\Mrloop;
+
+$loop = Mrloop::init();
+$tick = 0;
+
+$loop->futureTick(
+  function () use (&$tick) {
+    echo \sprintf("Tick: %d\n", ++$tick);
+  },
+);
+
+$loop->futureTick(
+  function () use (&$tick) {
+    echo \sprintf("Tick: %d\n", ++$tick);
+  },
+);
+
+$loop->run();
+```
+
+The example above will produce output similar to that in the snippet to follow.
+
+```
+Tick: 1
+Tick: 2
 ```
 
 ### `Mrloop::addSignal`

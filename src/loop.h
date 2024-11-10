@@ -28,6 +28,7 @@
 #define DEFAULT_HTTP_HEADER_LIMIT 100
 #define PHP_MRLOOP_TIMER 1
 #define PHP_MRLOOP_PERIODIC_TIMER 2
+#define PHP_MRLOOP_FUTURE_TICK 3
 
 struct php_mrloop_t;
 struct php_mrloop_cb_t;
@@ -130,6 +131,8 @@ static int php_mrloop_timer_cb(void *data);
 static void php_mrloop_add_timer(INTERNAL_FUNCTION_PARAMETERS);
 /* executes a specified action in perpetuity with each successive execution occurring after a specified time interval */
 static void php_mrloop_add_periodic_timer(INTERNAL_FUNCTION_PARAMETERS);
+/* schedules the execution of a specified action for the next event loop tick */
+static void php_mrloop_add_future_tick(INTERNAL_FUNCTION_PARAMETERS);
 
 /* mrloop-bound callback specified during invocation of vectorized read function */
 static void php_mrloop_readv_cb(void *data, int res);
@@ -156,6 +159,8 @@ static void php_mrloop_add_signal(INTERNAL_FUNCTION_PARAMETERS);
 static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS);
 /* funnels file descriptor in writable stream into event loop and thence executes a non-blocking write operation */
 static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS);
+/* performs vectorized non-blocking write operation on a specified file descriptor */
+static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS);
 
 zend_class_entry *php_mrloop_ce, *php_mrloop_exception_ce;
 

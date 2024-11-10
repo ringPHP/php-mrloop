@@ -84,6 +84,20 @@ PHP_METHOD(Mrloop, addWriteStream)
 }
 /* }}} */
 
+/* {{{ proto void Mrloop::writev( int fd [, string contents ] ) */
+PHP_METHOD(Mrloop, writev)
+{
+  php_mrloop_writev(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
+/* {{{ proto void Mrloop::futureTick( callable callback ) */
+PHP_METHOD(Mrloop, futureTick)
+{
+  php_mrloop_add_future_tick(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
 /* {{{ PHP_MINIT_FUNCTION */
 PHP_MINIT_FUNCTION(mrloop)
 {

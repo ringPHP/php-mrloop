@@ -549,32 +549,7 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
   this = PHP_MRLOOP_OBJ(obj);
 
   // convert resource to PHP stream
-  if ((stream = (php_stream *)zend_fetch_resource_ex(res, NULL, php_file_le_stream())))
-  {
-    // extract file descriptor from resource stream
-    if (php_stream_cast(stream, PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL, (void *)&fd, 1) == FAILURE || fd < 0)
-    {
-      PHP_MRLOOP_THROW("Passed resource without file descriptor");
-      RETURN_NULL();
-
-      close(fd);
-
-      return;
-    }
-  }
-
-  // set non-blocking mode
-  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
-  {
-    close(fd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
+  PHP_STREAM_TO_FD(stream, res, fd);
 
   fnbytes = (size_t)(nbytes_null == true ? DEFAULT_STREAM_BUFF_LEN : nbytes);
 
@@ -618,30 +593,7 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
 
   this = PHP_MRLOOP_OBJ(obj);
 
-  if ((stream = (php_stream *)zend_fetch_resource_ex(res, NULL, php_file_le_stream())))
-  {
-    if (php_stream_cast(stream, PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL, (void *)&fd, 1) == FAILURE || fd < 0)
-    {
-      PHP_MRLOOP_THROW("Passed resource without file descriptor");
-      RETURN_NULL();
-
-      close(fd);
-
-      return;
-    }
-  }
-
-  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)
-  {
-    close(fd);
-
-    char *error = strerror(errno);
-    PHP_MRLOOP_THROW(error);
-
-    mr_stop(this->loop);
-
-    return;
-  }
+  PHP_STREAM_TO_FD(stream, res, fd);
 
   nbytes = ZSTR_LEN(contents);
   iov = emalloc(sizeof(php_iovec_t));
@@ -662,28 +614,44 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
 }
 static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS)
 {
-  zend_long fd;
   zend_string *contents;
   php_iovec_t iov;
   php_mrloop_t *this;
-  zval *obj;
+  zval *obj, *res;
   size_t nbytes;
+  php_stream *stream;
+  int fd;
 
   obj = getThis();
+  fd = -1;
 
   ZEND_PARSE_PARAMETERS_START(2, 2)
-  Z_PARAM_LONG(fd)
+  Z_PARAM_ZVAL(res)
   Z_PARAM_STR(contents)
   ZEND_PARSE_PARAMETERS_END();
 
   this = PHP_MRLOOP_OBJ(obj);
 
-  if (fcntl((int)fd, F_GETFD) < 0)
+  if (Z_TYPE_P(res) == IS_RESOURCE)
+  {
+    PHP_STREAM_TO_FD(stream, res, fd);
+  }
+  else if (Z_TYPE_P(res) == IS_LONG)
+  {
+    fd = Z_LVAL_P(res);
+
+    if (fcntl(fd, F_GETFD) < 0)
+    {
+      PHP_MRLOOP_THROW("Detected invalid file descriptor");
+      mr_stop(this->loop);
+
+      return;
+    }
+  }
+  else
   {
     PHP_MRLOOP_THROW("Detected invalid file descriptor");
-    mr_stop(this->loop);
-
-    return;
+    RETURN_NULL();
   }
 
   nbytes = ZSTR_LEN(contents);

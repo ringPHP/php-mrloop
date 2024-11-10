@@ -55,7 +55,7 @@ class Mrloop
     callable $callback,
   ): void
   public tcpServer(int $port, callable $callback): void
-  public writev(int $fd, string $message): void
+  public writev(int|resource $fd, string $message): void
   public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
   public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
@@ -290,7 +290,7 @@ The example above will produce output similar to that in the snippet to follow.
 ### `Mrloop::writev`
 
 ```php
-public Mrloop::writev(int $fd, string $contents): void
+public Mrloop::writev(int|resource $fd, string $contents): void
 ```
 
 Performs vectorized non-blocking write operation on a specified file descriptor.

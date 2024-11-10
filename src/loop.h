@@ -176,4 +176,23 @@ zend_class_entry *php_mrloop_ce, *php_mrloop_exception_ce;
     GC_ADDREF(mrloop_cb->fci.object);                                           \
   }
 
+/* extract file descriptor from PHP stream */
+#define PHP_STREAM_TO_FD(fd_stream, fd_resource, fd)                           \
+  if ((fd_stream = (php_stream *)zend_fetch_resource_ex(                       \
+           fd_resource, NULL, php_file_le_stream()))) {                        \
+    if (php_stream_cast(fd_stream,                                             \
+                        PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL,           \
+                        (void *)&fd, 1) == FAILURE ||                          \
+        fd < 0) {                                                              \
+      PHP_MRLOOP_THROW("Passed resource without file descriptor");             \
+      RETURN_NULL();                                                           \
+    }                                                                          \
+  }                                                                            \
+  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0) {            \
+    close(fd);                                                                 \
+    char *error = strerror(errno);                                             \
+    PHP_MRLOOP_THROW(error);                                                   \
+    mr_stop(this->loop);                                                       \
+  }
+
 #endif

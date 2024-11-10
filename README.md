@@ -60,6 +60,7 @@ class Mrloop
   public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
   public addPeriodicTimer(float $interval, callable $callback): void
+  public futureTick(callable $callback): void
   public addSignal(int $signal, callable $callback): void
   public run(): void
   public stop(): void
@@ -75,6 +76,7 @@ class Mrloop
 - [`Mrloop::parseHttpResponse`](#mrloopparsehttpresponse)
 - [`Mrloop::addTimer`](#mrloopaddtimer)
 - [`Mrloop::addPeriodicTimer`](#mrloopaddperiodictimer)
+- [`Mrloop::futureTick`](#mrloopfuturetick)
 - [`Mrloop::addSignal`](#mrloopaddsignal)
 - [`Mrloop::run`](#mrlooprun)
 - [`Mrloop::stop`](#mrloopstop)
@@ -639,6 +641,50 @@ Tick: 2
 Tick: 3
 Tick: 4
 Tick: 5
+```
+
+### `Mrloop::futureTick`
+
+```php
+public Mrloop::futureTick(callable $callback): void
+```
+
+Schedules the execution of a specified action for the next event loop tick.
+
+**Parameter(s)**
+
+- **callback** (callable) - The function in which the action to be scheduled is defined.
+
+**Return value(s)**
+
+The function does not return anything.
+
+```php
+use ringphp\Mrloop;
+
+$loop = Mrloop::init();
+$tick = 0;
+
+$loop->futureTick(
+  function () use (&$tick) {
+    echo \sprintf("Tick: %d\n", ++$tick);
+  },
+);
+
+$loop->futureTick(
+  function () use (&$tick) {
+    echo \sprintf("Tick: %d\n", ++$tick);
+  },
+);
+
+$loop->run();
+```
+
+The example above will produce output similar to that in the snippet to follow.
+
+```
+Tick: 1
+Tick: 2
 ```
 
 ### `Mrloop::addSignal`

@@ -55,6 +55,10 @@ ZEND_ARG_TYPE_INFO(0, fd, IS_LONG, 0)
 ZEND_ARG_TYPE_INFO(0, contents, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Mrloop_futureTick, 0, 0, 1)
+ZEND_ARG_TYPE_INFO(0, callback, IS_CALLABLE, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_METHOD(Mrloop, init);
 ZEND_METHOD(Mrloop, stop);
 ZEND_METHOD(Mrloop, run);
@@ -67,6 +71,7 @@ ZEND_METHOD(Mrloop, addReadStream);
 ZEND_METHOD(Mrloop, addWriteStream);
 ZEND_METHOD(Mrloop, parseHttpResponse);
 ZEND_METHOD(Mrloop, writev);
+ZEND_METHOD(Mrloop, futureTick);
 
 static const zend_function_entry class_Mrloop_methods[] = {
   PHP_ME(Mrloop, init, arginfo_class_Mrloop_init, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
@@ -81,4 +86,5 @@ static const zend_function_entry class_Mrloop_methods[] = {
                     PHP_ME(Mrloop, addWriteStream, arginfo_class_Mrloop_addWriteStream, ZEND_ACC_PUBLIC)
                       PHP_ME(Mrloop, parseHttpResponse, arginfo_class_Mrloop_parseHttpResponse, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
                         PHP_ME(Mrloop, writev, arginfo_class_Mrloop_writev, ZEND_ACC_PUBLIC)
-                          PHP_FE_END};
+                          PHP_ME(Mrloop, futureTick, arginfo_class_Mrloop_futureTick, ZEND_ACC_PUBLIC)
+                            PHP_FE_END};

@@ -102,7 +102,7 @@ static int php_mrloop_timer_cb(void *data)
   zval_ptr_dtor(&result);
   efree(cb);
 
-  return type == PHP_MRLOOP_TIMER ? 0 : 1;
+  return type == PHP_MRLOOP_TIMER || type == PHP_MRLOOP_FUTURE_TICK ? 0 : 1;
 }
 static void php_mrloop_add_timer(INTERNAL_FUNCTION_PARAMETERS)
 {
@@ -159,6 +159,33 @@ static void php_mrloop_add_periodic_timer(INTERNAL_FUNCTION_PARAMETERS)
   cb->data = this->loop;
 
   mr_add_timer(this->loop, interval, php_mrloop_timer_cb, cb);
+
+  return;
+}
+static void php_mrloop_add_future_tick(INTERNAL_FUNCTION_PARAMETERS)
+{
+  zval *obj;
+  php_mrloop_cb_t *cb;
+  php_mrloop_t *this;
+  zend_fcall_info fci;
+  zend_fcall_info_cache fci_cache;
+
+  fci = empty_fcall_info;
+  fci_cache = empty_fcall_info_cache;
+  obj = getThis();
+
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+  Z_PARAM_FUNC(fci, fci_cache)
+  ZEND_PARSE_PARAMETERS_END();
+
+  this = PHP_MRLOOP_OBJ(obj);
+  cb = emalloc(sizeof(php_mrloop_cb_t));
+  PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
+
+  cb->signal = PHP_MRLOOP_FUTURE_TICK;
+  cb->data = this->loop;
+
+  mr_call_soon(this->loop, php_mrloop_timer_cb, cb);
 
   return;
 }

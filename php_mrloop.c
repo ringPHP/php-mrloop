@@ -91,6 +91,13 @@ PHP_METHOD(Mrloop, writev)
 }
 /* }}} */
 
+/* {{{ proto void Mrloop::futureTick( callable callback ) */
+PHP_METHOD(Mrloop, futureTick)
+{
+  php_mrloop_add_future_tick(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+/* }}} */
+
 /* {{{ PHP_MINIT_FUNCTION */
 PHP_MINIT_FUNCTION(mrloop)
 {

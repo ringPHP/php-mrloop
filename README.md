@@ -297,7 +297,7 @@ Performs vectorized non-blocking write operation on a specified file descriptor.
 
 **Parameter(s)**
 
-- **fd** (integer) - The file descriptor to write to.
+- **fd** (integer|resource) - The file descriptor to write to.
 - **contents** (string) - The arbitrary contents to write.
 
 **Return value(s)**

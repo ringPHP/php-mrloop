@@ -2,19 +2,19 @@
 #ifndef __LOOP_H__
 #define __LOOP_H__
 
-#include "php.h"
 #include "ext/spl/spl_exceptions.h"
 #include "ext/standard/info.h"
 #include "ext/standard/php_array.h"
 #include "ext/standard/php_string.h"
 #include "ext/standard/php_var.h"
-#include "zend_exceptions.h"
+#include "mrloop.c"
+#include "php.h"
 #include "php_network.h"
 #include "php_streams.h"
-#include "sys/file.h"
-#include "signal.h"
-#include "mrloop.c"
 #include "picohttpparser.c"
+#include "signal.h"
+#include "sys/file.h"
+#include "zend_exceptions.h"
 
 /* for compatibility with older PHP versions */
 #ifndef ZEND_PARSE_PARAMETERS_NONE
@@ -23,12 +23,15 @@
   ZEND_PARSE_PARAMETERS_END()
 #endif
 
-#define DEFAULT_STREAM_BUFF_LEN 8192
-#define DEFAULT_CONN_BUFF_LEN 65536
+#define DEFAULT_STREAM_BUFF_LEN 1024
+#define DEFAULT_CONN_BUFF_LEN 8132
 #define DEFAULT_HTTP_HEADER_LIMIT 100
+#define DEFAULT_VECTOR_COUNT 2
+#define DEFAULT_READV_OFFSET 0
 #define PHP_MRLOOP_TIMER 1
 #define PHP_MRLOOP_PERIODIC_TIMER 2
 #define PHP_MRLOOP_FUTURE_TICK 3
+#define PHP_MRLOOP_MAX_TCP_CONNECTIONS 1024
 
 struct php_mrloop_t;
 struct php_mrloop_cb_t;
@@ -60,7 +63,7 @@ struct php_mrloop_conn_t
   /* client socket address */
   char *addr;
   /* data sent over client socket */
-  char buffer[DEFAULT_CONN_BUFF_LEN];
+  char *buffer;
   /* client socket port */
   size_t port;
   /* scatter-gather I/O primitives */
@@ -97,6 +100,8 @@ php_mrloop_cb_t *tcp_cb;
 php_mrloop_cb_t *sig_cb[3];
 /* signal callback count */
 size_t sigc;
+/* TCP buffer size */
+size_t tcp_buff_size;
 ZEND_END_MODULE_GLOBALS(mrloop)
 /* }}} */
 
@@ -177,22 +182,25 @@ zend_class_entry *php_mrloop_ce, *php_mrloop_exception_ce;
   }
 
 /* extract file descriptor from PHP stream */
-#define PHP_STREAM_TO_FD(fd_stream, fd_resource, fd)                           \
-  if ((fd_stream = (php_stream *)zend_fetch_resource_ex(                       \
-           fd_resource, NULL, php_file_le_stream()))) {                        \
-    if (php_stream_cast(fd_stream,                                             \
-                        PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL,           \
-                        (void *)&fd, 1) == FAILURE ||                          \
-        fd < 0) {                                                              \
-      PHP_MRLOOP_THROW("Passed resource without file descriptor");             \
-      RETURN_NULL();                                                           \
-    }                                                                          \
-  }                                                                            \
-  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0) {            \
-    close(fd);                                                                 \
-    char *error = strerror(errno);                                             \
-    PHP_MRLOOP_THROW(error);                                                   \
-    mr_stop(this->loop);                                                       \
+#define PHP_STREAM_TO_FD(fd_stream, fd_resource, fd)                 \
+  if ((fd_stream = (php_stream *)zend_fetch_resource_ex(             \
+           fd_resource, NULL, php_file_le_stream())))                \
+  {                                                                  \
+    if (php_stream_cast(fd_stream,                                   \
+                        PHP_STREAM_AS_FD | PHP_STREAM_CAST_INTERNAL, \
+                        (void *)&fd, 1) == FAILURE ||                \
+        fd < 0)                                                      \
+    {                                                                \
+      PHP_MRLOOP_THROW("Passed resource without file descriptor");   \
+      RETURN_NULL();                                                 \
+    }                                                                \
+  }                                                                  \
+  if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0)    \
+  {                                                                  \
+    close(fd);                                                       \
+    char *error = strerror(errno);                                   \
+    PHP_MRLOOP_THROW(error);                                         \
+    mr_stop(this->loop);                                             \
   }
 
 #endif

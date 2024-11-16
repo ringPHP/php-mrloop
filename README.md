@@ -47,14 +47,22 @@ class Mrloop
   public addReadStream(
     resource $stream,
     ?int $nbytes,
+    ?int $vcount,
+    ?int $offset,
     callable $callback,
   ): void
   public addWriteStream(
     resource $stream,
     string $contents,
+    ?int $vcount,
     callable $callback,
   ): void
-  public tcpServer(int $port, callable $callback): void
+  public tcpServer(
+    int $port,
+    ?int $connections,
+    ?int $nbytes,
+    callable $callback,
+  ): void
   public writev(int|resource $fd, string $message): void
   public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
   public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
@@ -133,6 +141,8 @@ Hello, user
 public Mrloop::addReadStream(
   resource $stream,
   ?int $nbytes,
+  ?int $vcount,
+  ?int $offset,
   callable $callback,
 ): void
 ```
@@ -144,7 +154,12 @@ Funnels file descriptor in readable stream into event loop and thence executes a
 - **stream** (resource) - A userspace-defined readable stream.
   > The file descriptor in the stream is internally given a non-blocking disposition.
 - **nbytes** (int|null) - The number of bytes to read.
-  > Specifying `null` will condition the use of an 8KB buffer.
+  > Specifying `null` will condition the use of a 1KB buffer.
+- **vcount** (int|null) - The number of read vectors to use.
+  > Specifying `null` will condition the use of 2 vectors.
+  > Any value north of `8` will likely result in an inefficient read.
+- **offset** (int|null) - The point at which to start the read operation.
+  > Specifying `null` will condition the use of an offset of `0`.
 - **callback** (callable) - The binary function through which the file's contents and read result code are propagated.
 
 **Return value(s)**
@@ -159,12 +174,14 @@ $loop = Mrloop::init();
 $loop->addReadStream(
   $fd = \fopen('/path/to/file', 'r'),
   null,
+  null,
+  null,
   function (string $contents, int $res) use ($fd) {
     if ($res === 0) {
       echo \sprintf("%s\n", $contents);
-
-      \fclose($fd);
     }
+
+    \fclose($fd);
   },
 );
 
@@ -184,6 +201,7 @@ File contents...
 public Mrloop::addWriteStream(
   resource $stream,
   string $contents,
+  ?int $vcount,
   callable $callback,
 ): void
 ```
@@ -195,6 +213,9 @@ Funnels file descriptor in writable stream into event loop and thence executes a
 - **stream** (resource) - A userspace-defined writable stream.
   > The file descriptor in the stream is internally given a non-blocking disposition.
 - **contents** (string) - The contents to write to the file descriptor.
+- **vcount** (int|null) - The number of write vectors to use.
+  > Specifying `null` will condition the use of 2 vectors.
+  > Any value north of `8` will likely result in an inefficient write.
 - **callback** (callable) - The unary function through which the number of written bytes is propagated.
 
 **Return value(s)**
@@ -211,6 +232,7 @@ $file = '/path/to/file';
 $loop->addWriteStream(
   $fd = \fopen($file, 'w'),
   "file contents...\n",
+  null,
   function (int $nbytes) use ($fd, $file) {
     echo \sprintf("Wrote %d bytes to %s\n", $nbytes, $file);
 
@@ -231,7 +253,12 @@ Wrote 18 bytes to /path/to/file
 ### `Mrloop::tcpServer`
 
 ```php
-public Mrloop::tcpServer(int $port, callable $callback): void
+public Mrloop::tcpServer(
+  int $port,
+  ?int $connections,
+  ?int $nbytes,
+  callable $callback,
+): void
 ```
 
 Instantiates a simple TCP server.
@@ -239,6 +266,12 @@ Instantiates a simple TCP server.
 **Parameter(s)**
 
 - **port** (int) - The port on which to listen for incoming connections.
+- **connections** (int|null) - The maximum number of connections to accept.
+  > This parameter does not have any effect when a version of mrloop in which the `mr_tcp_server` function lacks the `max_conn` parameter is included in the compilation process.
+  > Specifying `null` will condition the use of a `1024` connection threshold.
+- **nbytes** (int|null) - The maximum number of readable bytes for each connection.
+  > This setting is akin to the `client_max_body_size` option in NGINX.
+  > Specifying null will condition the use of an `8192` byte threshold.
 - **callback** (callable) - The binary function with which to define a response to a client.
   > Refer to the segment to follow for more information on the callback.
   - **Callback parameters**
@@ -259,6 +292,8 @@ $loop = Mrloop::init();
 
 $loop->tcpServer(
   8080,
+  null,
+  null,
   function (string $message, iterable $client) {
     // print access log
     echo \sprintf(
@@ -311,6 +346,8 @@ $loop = Mrloop::init();
 
 $loop->tcpServer(
   8080,
+  null,
+  null,
   function (string $message, iterable $client) use ($loop) {
     [
       'client_addr' => $addr,
@@ -376,6 +413,8 @@ $loop = Mrloop::init();
 
 $loop->tcpServer(
   8080,
+  null,
+  null,
   function (mixed ...$args) {
     [$message,]  = $args;
     $response    = static fn (
@@ -451,9 +490,12 @@ $loop = Mrloop::init();
 $loop->addWriteStream(
   $sock = \stream_socket_client('tcp://www.example.com:80'),
   "GET / HTTP/1.0\r\nHost: www.example.com\r\nAccept: */*\r\n\r\n",
+  null,
   function ($nbytes) use ($loop, $sock) {
     $loop->addReadStream(
       $sock,
+      null,
+      null,
       null,
       function ($data, $res) use ($sock, $loop) {
         var_dump(Mrloop::parseHttpResponse($data));
@@ -713,6 +755,8 @@ $loop = Mrloop::init();
 $loop->addReadStream(
   $fd = \fopen('/path/to/file', 'r'),
   null,
+  null,
+  null,
   function (...$args) use ($fd) {
     [$contents] = $args;
 
@@ -784,7 +828,9 @@ $loop = Mrloop::init();
 
 $loop->addReadStream(
   $fd = \fopen('/path/to/file', 'r'),
-  'File contents...',
+  null,
+  null,
+  null,
   function ($contents, $res) use ($fd, $loop) {
     echo \sprintf("%s\n", $contents);
 

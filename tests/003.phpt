@@ -12,6 +12,7 @@ $file = \sprintf("%s/file.txt", __DIR__);
 $loop->addWriteStream(
   $fd = \fopen($file, 'w'),
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+  null,
   function (int $nbytes) use ($fd, $file, $loop) {
     var_dump($nbytes);
 

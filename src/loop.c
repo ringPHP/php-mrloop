@@ -192,6 +192,11 @@ static void php_mrloop_add_future_tick(INTERNAL_FUNCTION_PARAMETERS)
 
 static void php_mrloop_readv_cb(void *data, int res)
 {
+  if (res < 0)
+  {
+    PHP_MRLOOP_THROW(strerror(-res));
+  }
+
   php_mrloop_cb_t *cb;
   php_iovec_t *iov;
   zval args[2], result;
@@ -222,6 +227,11 @@ static void php_mrloop_readv_cb(void *data, int res)
 }
 static void php_mrloop_writev_cb(void *data, int res)
 {
+  if (res < 0)
+  {
+    PHP_MRLOOP_THROW(strerror(-res));
+  }
+
   php_mrloop_cb_t *cb = (php_mrloop_cb_t *)data;
   zval args[1], result;
   ZVAL_LONG(&args[0], res);
@@ -251,8 +261,9 @@ static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize)
 
   conn = emalloc(sizeof(php_mrloop_conn_t));
   conn->fd = fd;
+  conn->buffer = emalloc(MRLOOP_G(tcp_buff_size));
   *buffer = conn->buffer;
-  *bsize = DEFAULT_CONN_BUFF_LEN;
+  *bsize = MRLOOP_G(tcp_buff_size);
 
   socklen = sizeof(php_sockaddr_t);
 
@@ -277,6 +288,7 @@ static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *
   {
     mr_close(loop, client->fd);
     efree(client->addr);
+    efree(client->buffer);
     efree(client);
 
     return 1;
@@ -288,7 +300,7 @@ static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *
   array_init(&args[1]);
   add_assoc_string(&args[1], "client_addr", (char *)client->addr);
   add_assoc_long(&args[1], "client_port", client->port);
-  add_assoc_long(&args[1], "client_fd", client->fd);
+  add_assoc_long(&args[1], "client_fd", dup(client->fd));
 
   MRLOOP_G(tcp_cb)->fci.retval = &result;
   MRLOOP_G(tcp_cb)->fci.param_count = 2;
@@ -321,24 +333,39 @@ static void php_mrloop_tcp_server_listen(INTERNAL_FUNCTION_PARAMETERS)
   php_mrloop_t *this;
   zend_fcall_info fci;
   zend_fcall_info_cache fci_cache;
-  zend_long port;
+  zend_long port, max_conn, nbytes;
+  bool max_conn_null, nbytes_null;
+  size_t nconn, fnbytes;
 
   obj = getThis();
   fci = empty_fcall_info;
   fci_cache = empty_fcall_info_cache;
+  max_conn_null = true;
+  nbytes_null = true;
 
-  ZEND_PARSE_PARAMETERS_START(2, 2)
+  ZEND_PARSE_PARAMETERS_START(4, 4)
   Z_PARAM_LONG(port)
+  Z_PARAM_LONG_OR_NULL(max_conn, max_conn_null)
+  Z_PARAM_LONG_OR_NULL(nbytes, nbytes_null)
   Z_PARAM_FUNC(fci, fci_cache)
   ZEND_PARSE_PARAMETERS_END();
 
   this = PHP_MRLOOP_OBJ(obj);
 
+  fnbytes = (size_t)(nbytes_null == true ? DEFAULT_CONN_BUFF_LEN : nbytes);
+  MRLOOP_G(tcp_buff_size) = fnbytes;
+
   MRLOOP_G(tcp_cb) = emalloc(sizeof(php_mrloop_cb_t));
   PHP_CB_TO_MRLOOP_CB(MRLOOP_G(tcp_cb), fci, fci_cache);
   MRLOOP_G(tcp_cb)->data = this->loop;
 
+  nconn = (size_t)(max_conn_null == true ? PHP_MRLOOP_MAX_TCP_CONNECTIONS : (max_conn == 0 ? PHP_MRLOOP_MAX_TCP_CONNECTIONS : max_conn));
+
+#ifdef MRLOOP_H
+  mr_tcp_server(this->loop, (int)port, nconn, php_mrloop_tcp_client_setup, php_mrloop_tcp_server_recv);
+#else
   mr_tcp_server(this->loop, (int)port, php_mrloop_tcp_client_setup, php_mrloop_tcp_server_recv);
+#endif
 
   return;
 }
@@ -528,21 +555,25 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
   php_iovec_t *iov;
   zend_fcall_info fci;
   zend_fcall_info_cache fci_cache;
-  zend_long nbytes;
-  bool nbytes_null;
+  zend_long nbytes, vcount, offset;
+  bool nbytes_null, vcount_null, offset_null;
   int fd; // php_socket_t fd;
   php_stream *stream;
-  size_t fnbytes;
+  size_t fnbytes, fvcount, foffset;
 
   obj = getThis();
   nbytes_null = true;
+  vcount_null = true;
+  offset_null = true;
   fci = empty_fcall_info;
   fci_cache = empty_fcall_info_cache;
   fd = -1;
 
-  ZEND_PARSE_PARAMETERS_START(3, 3)
+  ZEND_PARSE_PARAMETERS_START(5, 5)
   Z_PARAM_RESOURCE(res)
   Z_PARAM_LONG_OR_NULL(nbytes, nbytes_null)
+  Z_PARAM_LONG_OR_NULL(vcount, vcount_null)
+  Z_PARAM_LONG_OR_NULL(offset, offset_null)
   Z_PARAM_FUNC(fci, fci_cache)
   ZEND_PARSE_PARAMETERS_END();
 
@@ -552,6 +583,8 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
   PHP_STREAM_TO_FD(stream, res, fd);
 
   fnbytes = (size_t)(nbytes_null == true ? DEFAULT_STREAM_BUFF_LEN : nbytes);
+  fvcount = (size_t)(vcount_null == true ? DEFAULT_VECTOR_COUNT : vcount);
+  foffset = (size_t)(offset_null == true ? DEFAULT_READV_OFFSET : offset);
 
   iov = emalloc(sizeof(php_iovec_t));
   iov->iov_base = emalloc(fnbytes);
@@ -562,7 +595,7 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
 
   cb->data = iov;
 
-  mr_readvcb(this->loop, fd, iov, 1, 0, cb, php_mrloop_readv_cb);
+  mr_readvcb(this->loop, fd, iov, fvcount, foffset, cb, php_mrloop_readv_cb);
   mr_flush(this->loop);
 
   return;
@@ -576,18 +609,22 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
   php_iovec_t *iov;
   zend_fcall_info fci;
   zend_fcall_info_cache fci_cache;
+  zend_long vcount;
+  bool vcount_null;
   int fd;
   php_stream *stream;
-  size_t nbytes;
+  size_t nbytes, fvcount;
 
   obj = getThis();
   fci = empty_fcall_info;
   fci_cache = empty_fcall_info_cache;
   fd = -1;
+  vcount_null = true;
 
-  ZEND_PARSE_PARAMETERS_START(3, 3)
+  ZEND_PARSE_PARAMETERS_START(4, 4)
   Z_PARAM_RESOURCE(res)
   Z_PARAM_STR(contents)
+  Z_PARAM_LONG_OR_NULL(vcount, vcount_null)
   Z_PARAM_FUNC(fci, fci_cache)
   ZEND_PARSE_PARAMETERS_END();
 
@@ -607,7 +644,9 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
 
   cb->data = iov;
 
-  mr_writevcb(this->loop, fd, iov, 1, cb, php_mrloop_writev_cb);
+  fvcount = (size_t)(vcount_null == true ? DEFAULT_VECTOR_COUNT : vcount);
+
+  mr_writevcb(this->loop, fd, iov, fvcount, cb, php_mrloop_writev_cb);
   mr_flush(this->loop);
 
   return;
@@ -642,7 +681,7 @@ static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS)
 
     if (fcntl(fd, F_GETFD) < 0)
     {
-      PHP_MRLOOP_THROW("Detected invalid file descriptor");
+      PHP_MRLOOP_THROW(strerror(errno));
       mr_stop(this->loop);
 
       return;

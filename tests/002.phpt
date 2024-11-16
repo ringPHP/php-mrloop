@@ -10,6 +10,8 @@ $loop = Mrloop::init();
 $loop->addReadStream(
   $fd = \popen('pwd', 'r'),
   null,
+  null,
+  null,
   function (...$args) use ($fd, $loop) {
     [$message] = $args;
 

@@ -18,4 +18,4 @@ $loop->run();
 
 ?>
 --EXPECT--
-Detected invalid file descriptor
+Bad file descriptor

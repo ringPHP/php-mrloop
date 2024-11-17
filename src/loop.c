@@ -261,7 +261,7 @@ static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize)
 
   conn = emalloc(sizeof(php_mrloop_conn_t));
   conn->fd = fd;
-  conn->buffer = emalloc(MRLOOP_G(tcp_buff_size));
+  conn->buffer = ecalloc(1, MRLOOP_G(tcp_buff_size));
   *buffer = conn->buffer;
   *bsize = MRLOOP_G(tcp_buff_size);
 
@@ -587,7 +587,7 @@ static void php_mrloop_add_read_stream(INTERNAL_FUNCTION_PARAMETERS)
   foffset = (size_t)(offset_null == true ? DEFAULT_READV_OFFSET : offset);
 
   iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(fnbytes);
+  iov->iov_base = ecalloc(1, fnbytes);
   iov->iov_len = fnbytes;
 
   cb = emalloc(sizeof(php_mrloop_cb_t));
@@ -634,7 +634,7 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
 
   nbytes = ZSTR_LEN(contents);
   iov = emalloc(sizeof(php_iovec_t));
-  iov->iov_base = emalloc(nbytes);
+  iov->iov_base = ecalloc(1, nbytes);
   iov->iov_len = nbytes;
 
   strcpy(iov->iov_base, ZSTR_VAL(contents));

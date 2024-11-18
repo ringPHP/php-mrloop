@@ -156,7 +156,7 @@ Funnels file descriptor in readable stream into event loop and thence executes a
 - **nbytes** (int|null) - The number of bytes to read.
   > Specifying `null` will condition the use of a 1KB buffer.
 - **vcount** (int|null) - The number of read vectors to use.
-  > Specifying `null` will condition the use of 2 vectors.
+  > Specifying `null` will condition the use of `1` vector.
   > Any value north of `8` will likely result in an inefficient read.
 - **offset** (int|null) - The point at which to start the read operation.
   > Specifying `null` will condition the use of an offset of `0`.
@@ -214,7 +214,7 @@ Funnels file descriptor in writable stream into event loop and thence executes a
   > The file descriptor in the stream is internally given a non-blocking disposition.
 - **contents** (string) - The contents to write to the file descriptor.
 - **vcount** (int|null) - The number of write vectors to use.
-  > Specifying `null` will condition the use of 2 vectors.
+  > Specifying `null` will condition the use of `1` vector.
   > Any value north of `8` will likely result in an inefficient write.
 - **callback** (callable) - The unary function through which the number of written bytes is propagated.
 

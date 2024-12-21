@@ -4,7 +4,7 @@ A PHP port of an event loop designed to harness the powers of `io_uring`.
 
 ## Rationale
 
-PHP has, in recent years, seen an emergence of eventware built atop potent multiplexing functions like `epoll()`, `poll()`, and `select()`. In event loops like `libev`, `libuv`, and `libevent` are powerful abstractions of the aforelisted functions for interleaving I/O inside a single process. Eponymous PHP extensions have, in the years since the popularization of the non-blocking I/O paradigm, been created to avail users of the language of the many potencies of the aforestated libraries. `io_uring` is yet another async system call API, and mrloop is an event loop built atop its interface. The former, which the latter is written atop—presents an enhancive proposition: unlike the commonplace non-blocking I/O APIs, it is a universal I/O interface with a small system call footprint. `io_uring` is, internally, a ring buffer—a structure the operations on which are of an **O(1)** complexity—whose mechanism is registration of a file descriptor on a submission queue and subsequent retrieval of output from a completion queue. It confers performance benefits that are useful to any project capable of interacting with its API and is thus useful to those for whom PHP is a preferred programming language.
+PHP has, in recent years, seen an emergence of eventware built atop potent multiplexing functions like `epoll()`, `poll()`, and `select()`. In event loops like `libev`, `libuv`, and `libevent` are powerful abstractions of the aforelisted functions for interleaving I/O inside a single process. Eponymous PHP extensions have, in the years since the popularization of the non-blocking I/O paradigm, been created to avail users of the language of the many potencies of the aforestated libraries. `io_uring` is yet another async system call API, and mrloop is an event loop built atop its interface. The former, which the latter is written atop—presents an enhancive proposition: unlike the commonplace non-blocking I/O APIs, it is a unified evented I/O interface with an emphasis on efficient userspace-kernel communications. `io_uring` is, internally, a set of [ring buffers](https://en.wikipedia.org/wiki/Circular_buffer)—structures the operations on which are of an **O(1)** complexity—whose communication mechanism is such that a userspace-resident application places a file descriptor on a submission queue and subsequently retrieves matching output from a kernel-controlled completion queue. It confers performance benefits that stem from a small system call footprint and is thus useful to any PHP developer keen on evented I/O.
 
 ## Requirements
 
@@ -19,9 +19,9 @@ PHP has, in recent years, seen an emergence of eventware built atop potent multi
 It is important to have all the aforelisted requirements at the ready before attempting to install `ext-mrloop`. The directives in the snippet to follow should allow you to build the extension's shared object file (`mrloop.so`).
 
 ```sh
-$ git clone https://github.com/markreedz/mrloop.git <mrloop-dir>
+$ git clone https://github.com/ace411/mrloop.git <mrloop-dir>
 $ git clone https://github.com/h2o/picohttpparser.git <picohttp-dir>
-$ git clone https://github.com/ace411/php-uring-loop.git <dir>
+$ git clone https://github.com/ringphp/php-mrloop.git <dir>
 $ cd <dir>
 $ ./configure --with-mrloop=<mrloop-dir> --with-picohttp=<picohttp-dir>
 $ make && sudo make install

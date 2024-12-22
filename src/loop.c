@@ -267,7 +267,7 @@ static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize)
 
   socklen = sizeof(php_sockaddr_t);
 
-  if (getpeername(fd, &addr, &socklen) > -1)
+  if (getpeername(fd, (struct sockaddr *)&addr, &socklen) > -1)
   {
     inet_ntop(AF_INET, &addr.sin_addr, ip_str, INET_ADDRSTRLEN);
 

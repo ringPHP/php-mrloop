@@ -49,20 +49,6 @@ PHP_METHOD(Mrloop, tcpServer)
 }
 /* }}} */
 
-/* {{{ proto array Mrloop::parseHttpRequest( string request [, int headerlimit = 100 ] ) */
-PHP_METHOD(Mrloop, parseHttpRequest)
-{
-  php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
-/* {{{ proto array Mrloop::parseHttpResponse( string request [, int headerlimit = 100 ] ) */
-PHP_METHOD(Mrloop, parseHttpResponse)
-{
-  php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-/* }}} */
-
 /* {{{ proto void Mrloop::addSignal( int signal [, callable callback ] ) */
 PHP_METHOD(Mrloop, addSignal)
 {

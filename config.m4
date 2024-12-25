@@ -1,4 +1,4 @@
-dnl ext-mrloop config.m4 file
+dnl mrloop extension for PHP (c) 2024 Lochemem Bruno Michael
 
 dnl PHP_ARG_ENABLE([mrloop],
 dnl   [for mrloop support],
@@ -9,12 +9,6 @@ PHP_ARG_WITH([mrloop],
   [for mrloop library],
   [AS_HELP_STRING([--with-mrloop],
     [specify path to mrloop library])],
-  [no])
-
-PHP_ARG_WITH([picohttp],
-  [for picohttp library],
-  [AS_HELP_STRING([--with-picohttp],
-    [specify path to picohttp library])],
   [no])
 
 if test "$PHP_MRLOOP" != "no"; then
@@ -51,15 +45,7 @@ if test "$PHP_MRLOOP" != "no"; then
     AC_MSG_ERROR(Please download mrloop)
   fi
 
-  AC_MSG_CHECKING([for picohttpparser package])
-  if test -s "$PHP_PICOHTTP/picohttpparser.c"; then
-    AC_MSG_RESULT(found picohttpparser package)
-  else
-    AC_MSG_RESULT(picohttpparser is not downloaded)
-    AC_MSG_ERROR(Please download picohttpparser)
-  fi
-
-  CFLAGS="-g -O3 -luring -I$PHP_MRLOOP/ -I$PHP_PICOHTTP/"
+  CFLAGS="-g -O3 -luring -I$PHP_MRLOOP/"
   AC_DEFINE(HAVE_MRLOOP, 1, [ Have mrloop support ])
 
   PHP_NEW_EXTENSION(mrloop, php_mrloop.c, $ext_shared)

@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.1', '8.2', '8.3']
+        php: ['8.1', '8.2', '8.3', '8.4']
     name: PHP ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +18,11 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: posix, pcntl
+        env:
+          phpts: ts
       - name: Run tests
         run: |
           git clone https://github.com/markreedz/mrloop.git mrloop && \
           git clone https://github.com/axboe/liburing.git liburing && cd liburing && make && sudo make install && \
-          cd ../ && git clone https://github.com/h2o/picohttpparser.git picohttp && \
-          phpize && ./configure --with-mrloop="$(pwd)/mrloop" --with-picohttp="$(pwd)/picohttp" && \
+          cd ../ && phpize && ./configure --with-mrloop="$(pwd)/mrloop" && \
           make && make test

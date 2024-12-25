@@ -12,7 +12,6 @@ PHP has, in recent years, seen an emergence of eventware built atop potent multi
 - Linux Kernel 5.4.1 or newer
 - [mrloop](https://github.com/markreedz/mrloop)
 - [liburing](https://github.com/axboe/liburing)
-- [picohttpparser](https://github.com/h2o/picohttpparser)
 
 ## Installation
 
@@ -20,10 +19,9 @@ It is important to have all the aforelisted requirements at the ready before att
 
 ```sh
 $ git clone https://github.com/ace411/mrloop.git <mrloop-dir>
-$ git clone https://github.com/h2o/picohttpparser.git <picohttp-dir>
 $ git clone https://github.com/ringphp/php-mrloop.git <dir>
 $ cd <dir>
-$ ./configure --with-mrloop=<mrloop-dir> --with-picohttp=<picohttp-dir>
+$ phpize && ./configure --with-mrloop=<mrloop-dir>
 $ make && sudo make install
 ```
 
@@ -64,8 +62,6 @@ class Mrloop
     callable $callback,
   ): void
   public writev(int|resource $fd, string $message): void
-  public static parseHttpRequest(string $request, int $headerlimit = 100): iterable
-  public static parseHttpResponse(string $response, int $headerlimit = 100): iterable
   public addTimer(float $interval, callable $callback): void
   public addPeriodicTimer(float $interval, callable $callback): void
   public futureTick(callable $callback): void
@@ -80,8 +76,6 @@ class Mrloop
 - [`Mrloop::addWriteStream`](#mrloopaddwritestream)
 - [`Mrloop::tcpServer`](#mrlooptcpserver)
 - [`Mrloop::writev`](#mrloopwritev)
-- [`Mrloop::parseHttpRequest`](#mrloopparsehttprequest)
-- [`Mrloop::parseHttpResponse`](#mrloopparsehttpresponse)
 - [`Mrloop::addTimer`](#mrloopaddtimer)
 - [`Mrloop::addPeriodicTimer`](#mrloopaddperiodictimer)
 - [`Mrloop::futureTick`](#mrloopfuturetick)
@@ -375,226 +369,6 @@ The example above will produce output similar to that in the snippet to follow.
 
 ```
 Listening on port 8080
-
-```
-
-### `Mrloop::parseHttpRequest`
-
-```php
-public static Mrloop::parseHttpRequest(
-  string $request,
-  int $headerlimit = 100,
-): iterable
-```
-
-Parses an HTTP request.
-
-> This is a function that utilizes the `picohttpparser` API.
-
-**Parameter(s)**
-
-- **request** (string) - The HTTP request to parse.
-- **headerlimit** (int) - The number of headers to parse.
-  > The default limit is `100`.
-
-**Return value(s)**
-
-The parser will throw an exception in the event that an invalid HTTP request is encountered and will output a hashtable with the contents enumerated below otherwise.
-
-- **body** (string) - The request body.
-- **headers** (iterable) - An associative array containing request headers.
-- **method** (string) - The request method.
-- **path** (string) - The request path.
-
-```php
-use ringphp\Mrloop;
-
-$loop = Mrloop::init();
-
-$loop->tcpServer(
-  8080,
-  null,
-  null,
-  function (mixed ...$args) {
-    [$message,]  = $args;
-    $response    = static fn (
-      string $message,
-      int $code    = 200,
-      string $mime = 'text/plain',
-    ) =>
-      \sprintf(
-        "HTTP/1.1 %d %s\r\ncontent-type: %s\r\ncontent-length: %d\r\n\r\n%s\r\n",
-        $code,
-        ($code === 200 ? 'OK' : 'Internal Server Error'),
-        $mime,
-        \strlen($message),
-        $message,
-      );
-
-    try {
-      $request = Mrloop::parseHttpRequest($message);
-
-      return $response('Hello, user');
-    } catch (\Throwable $err) {
-      return $response(
-        'HTTP parser error',
-        500,
-      );
-    }
-  },
-);
-
-$loop->run();
-```
-
-The example above will produce output similar to that in the snippet to follow.
-
-```
-Listening on port 8080
-
-```
-
-### `Mrloop::parseHttpResponse`
-
-```php
-public static Mrloop::parseHttpResponse(
-  string $response,
-  int $headerlimit = 100,
-): iterable
-```
-
-Parses an HTTP response.
-
-> This function also utilizes the `picohttpparser` API.
-
-**Parameter(s)**
-
-- **response** (string) - The HTTP response to parse.
-- **headerlimit** (int) - The number of headers to parse.
-  > The default limit is `100`.
-
-**Return value(s)**
-
-The parser will throw an exception in the event that an invalid HTTP response is encountered and will output a hashtable with the contents enumerated below otherwise.
-
-- **body** (string) - The response body.
-- **headers** (iterable) - An associative array containing response headers.
-- **status** (int) - The response status code.
-- **reason** (string) - The response reason phrase.
-
-```php
-use ringphp\Mrloop;
-
-$loop = Mrloop::init();
-
-$loop->addWriteStream(
-  $sock = \stream_socket_client('tcp://www.example.com:80'),
-  "GET / HTTP/1.0\r\nHost: www.example.com\r\nAccept: */*\r\n\r\n",
-  null,
-  function ($nbytes) use ($loop, $sock) {
-    $loop->addReadStream(
-      $sock,
-      null,
-      null,
-      null,
-      function ($data, $res) use ($sock, $loop) {
-        var_dump(Mrloop::parseHttpResponse($data));
-
-        \fclose($sock);
-      },
-    );
-  },
-);
-
-$loop->run();
-```
-
-The example above will produce output similar to that in the snippet to follow.
-
-```
-array(4) {
-  ["reason"]=>
-  string(2) "OK"
-  ["status"]=>
-  int(200)
-  ["body"]=>
-  string(1256) "<!doctype html>
-<html>
-<head>
-    <title>Example Domain</title>
-
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style type="text/css">
-    body {
-        background-color: #f0f0f2;
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-
-    }
-    div {
-        width: 600px;
-        margin: 5em auto;
-        padding: 2em;
-        background-color: #fdfdff;
-        border-radius: 0.5em;
-        box-shadow: 2px 3px 7px 2px rgba(0,0,0,0.02);
-    }
-    a:link, a:visited {
-        color: #38488f;
-        text-decoration: none;
-    }
-    @media (max-width: 700px) {
-        div {
-            margin: 0 auto;
-            width: auto;
-        }
-    }
-    </style>
-</head>
-
-<body>
-<div>
-    <h1>Example Domain</h1>
-    <p>This domain is for use in illustrative examples in documents. You may use this
-    domain in literature without prior coordination or asking for permission.</p>
-    <p><a href="https://www.iana.org/domains/example">More information...</a></p>
-</div>
-</body>
-</html>
-"
-  ["headers"]=>
-  array(13) {
-    ["Accept-Ranges"]=>
-    string(5) "bytes"
-    ["Age"]=>
-    string(6) "506325"
-    ["Cache-Control"]=>
-    string(14) "max-age=604800"
-    ["Content-Type"]=>
-    string(24) "text/html; charset=UTF-8"
-    ["Date"]=>
-    string(29) "Wed, 30 Oct 2024 15:37:43 GMT"
-    ["Etag"]=>
-    string(17) ""3147526947+gzip""
-    ["Expires"]=>
-    string(29) "Wed, 06 Nov 2024 15:37:43 GMT"
-    ["Last-Modified"]=>
-    string(29) "Thu, 17 Oct 2019 07:18:26 GMT"
-    [""]=>
-    string(16) "ECAcc (dcd/7D5A)"
-    ["Vary"]=>
-    string(15) "Accept-Encoding"
-    ["X-Cache"]=>
-    string(3) "HIT"
-    ["Content-Length"]=>
-    string(4) "1256"
-    ["Connection"]=>
-    string(5) "close"
-  }
-}
 
 ```
 

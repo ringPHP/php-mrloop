@@ -205,7 +205,7 @@ static void php_mrloop_readv_cb(void *data, int res)
   iov = (php_iovec_t *)cb->data;
 
   char next[(size_t)iov->iov_len];
-  sprintf(next, "%.*s", (int)iov->iov_len, (char *)iov->iov_base);
+  php_strncpy(next, iov->iov_base, iov->iov_len + 1);
 
   ZVAL_STRING(&args[0], next);
   ZVAL_LONG(&args[1], res);
@@ -267,12 +267,12 @@ static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize)
 
   socklen = sizeof(php_sockaddr_t);
 
-  if (getpeername(fd, &addr, &socklen) > -1)
+  if (getpeername(fd, (struct sockaddr *)&addr, &socklen) > -1)
   {
     inet_ntop(AF_INET, &addr.sin_addr, ip_str, INET_ADDRSTRLEN);
 
-    conn->addr = ecalloc(1, strlen(ip_str));
-    strcpy(conn->addr, ip_str);
+    conn->addr = ecalloc(1, INET_ADDRSTRLEN);
+    php_strncpy(conn->addr, ip_str, INET_ADDRSTRLEN);
 
     conn->port = (size_t)addr.sin_port;
   }
@@ -368,126 +368,6 @@ static void php_mrloop_tcp_server_listen(INTERNAL_FUNCTION_PARAMETERS)
 #endif
 
   return;
-}
-static void php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zend_string *request;
-  int http_parser, http_minor_version;
-  zval retval, retval_headers;
-  char *method, *path;
-  size_t header_count, method_len, path_len, buffer_len;
-  zend_long header_limit = DEFAULT_HTTP_HEADER_LIMIT;
-
-  ZEND_PARSE_PARAMETERS_START(1, 2)
-  Z_PARAM_STR(request)
-  Z_PARAM_OPTIONAL
-  Z_PARAM_LONG(header_limit)
-  ZEND_PARSE_PARAMETERS_END();
-
-  buffer_len = ZSTR_LEN(request);
-  phr_header_t headers[(size_t)header_limit];
-  char buffer[(size_t)buffer_len];
-
-  header_count = sizeof(headers) / sizeof(headers[0]);
-  strcpy(buffer, ZSTR_VAL(request));
-
-  http_parser = phr_parse_request(
-    buffer, buffer_len, (const char **)&method, &method_len, (const char **)&path,
-    &path_len, &http_minor_version, headers, &header_count, 0);
-
-  if (http_parser < 0)
-  {
-    PHP_MRLOOP_THROW("There is an error in the HTTP request syntax");
-    RETURN_NULL();
-  }
-
-  array_init(&retval);
-  array_init(&retval_headers);
-
-  char *body, tmp_method[method_len], tmp_path[path_len];
-  body = buffer + http_parser;
-
-  sprintf(tmp_method, "%.*s", (int)method_len, method);
-  sprintf(tmp_path, "%.*s", (int)path_len, path);
-
-  add_assoc_string(&retval, "path", tmp_path);
-  add_assoc_string(&retval, "method", tmp_method);
-  add_assoc_string(&retval, "body", body);
-
-  // initialize array for response headers
-  for (size_t idx = 0; idx < header_count; idx++)
-  {
-    if (headers[idx].name && headers[idx].value)
-    {
-      char tmp_header_name[headers[idx].name_len], tmp_header_value[headers[idx].value_len];
-      sprintf(tmp_header_name, "%.*s", (int)headers[idx].name_len, headers[idx].name);
-      sprintf(tmp_header_value, "%.*s", (int)headers[idx].value_len, headers[idx].value);
-
-      add_assoc_string(&retval_headers, tmp_header_name, tmp_header_value);
-    }
-  }
-
-  add_assoc_zval(&retval, "headers", &retval_headers);
-
-  RETURN_ZVAL(&retval, 0, 1);
-}
-static void php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAMETERS)
-{
-  zend_string *response;
-  int http_parser, http_minor_version, http_status;
-  zval retval, retval_headers;
-  char *message;
-  size_t header_count, message_len, buffer_len;
-  zend_long header_limit = DEFAULT_HTTP_HEADER_LIMIT;
-
-  ZEND_PARSE_PARAMETERS_START(1, 2)
-  Z_PARAM_STR(response)
-  Z_PARAM_OPTIONAL
-  Z_PARAM_LONG(header_limit)
-  ZEND_PARSE_PARAMETERS_END();
-
-  buffer_len = ZSTR_LEN(response);
-  phr_header_t headers[(size_t)header_limit];
-  char buffer[(size_t)buffer_len];
-
-  header_count = sizeof(headers) / sizeof(headers[0]);
-  strcpy(buffer, ZSTR_VAL(response));
-
-  http_parser = phr_parse_response(
-    buffer, buffer_len, &http_minor_version, &http_status, (const char **)&message,
-    &message_len, headers, &header_count, 0);
-
-  if (http_parser < 0)
-  {
-    PHP_MRLOOP_THROW("There is an error in the HTTP response syntax");
-    RETURN_NULL();
-  }
-
-  array_init(&retval);
-  array_init(&retval_headers);
-
-  char tmp_message[message_len], *body;
-  sprintf(tmp_message, "%.*s", (int)message_len, message);
-  body = buffer + http_parser;
-
-  add_assoc_string(&retval, "reason", tmp_message);
-  add_assoc_long(&retval, "status", http_status);
-  add_assoc_string(&retval, "body", body);
-
-  for (size_t idx = 0; idx < header_count; idx++)
-  {
-    if (headers[idx].name && headers[idx].value)
-    {
-      char tmp_header_name[headers[idx].name_len], tmp_header_value[headers[idx].value_len];
-      sprintf(tmp_header_name, "%.*s", (int)headers[idx].name_len, headers[idx].name);
-      sprintf(tmp_header_value, "%.*s", (int)headers[idx].value_len, headers[idx].value);
-
-      add_assoc_string(&retval_headers, tmp_header_name, tmp_header_value);
-    }
-  }
-
-  add_assoc_zval(&retval, "headers", &retval_headers);
-  RETURN_ZVAL(&retval, 0, 1);
 }
 
 static void php_mrloop_signal_cb(int sig)
@@ -637,7 +517,7 @@ static void php_mrloop_add_write_stream(INTERNAL_FUNCTION_PARAMETERS)
   iov->iov_base = ecalloc(1, nbytes);
   iov->iov_len = nbytes;
 
-  strcpy(iov->iov_base, ZSTR_VAL(contents));
+  php_strncpy(iov->iov_base, ZSTR_VAL(contents), nbytes + 1);
 
   cb = emalloc(sizeof(php_mrloop_cb_t));
   PHP_CB_TO_MRLOOP_CB(cb, fci, fci_cache);
@@ -699,4 +579,31 @@ static void php_mrloop_writev(INTERNAL_FUNCTION_PARAMETERS)
 
   mr_writev(this->loop, fd, &iov, 1);
   mr_flush(this->loop);
+}
+
+static size_t php_strncpy(char *dst, char *src, size_t nbytes)
+{
+  const char *osrc = src;
+  size_t nleft = nbytes;
+
+  // copy as many bytes as will fit
+  if (nleft != 0)
+  {
+    while (--nleft != 0)
+    {
+      if ((*dst++ = *src++) == '\0')
+        break;
+    }
+  }
+
+  // not enough room in dst, add null byte and traverse rest of src
+  if (nleft == 0)
+  {
+    if (nbytes != 0)
+      *dst = '\0';
+    while (*src++)
+      ;
+  }
+
+  return (src - osrc - 1);
 }

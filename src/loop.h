@@ -11,7 +11,6 @@
 #include "php.h"
 #include "php_network.h"
 #include "php_streams.h"
-#include "picohttpparser.c"
 #include "signal.h"
 #include "sys/file.h"
 #include "zend_exceptions.h"
@@ -116,6 +115,9 @@ ZEND_DECLARE_MODULE_GLOBALS(mrloop)
 
 static PHP_GINIT_FUNCTION(mrloop);
 
+/* safe rendition of native C strncpy (adapted from https://github.com/ariadnavigo/strlcpy) */
+static size_t php_strncpy(char *dst, char *src, size_t nbytes);
+
 /* creates mrloop object in PHP userspace */
 static zend_object *php_mrloop_create_object(zend_class_entry *ce);
 /* frees PHP userspace-residing mrloop object */
@@ -150,10 +152,6 @@ static void *php_mrloop_tcp_client_setup(int fd, char **buffer, int *bsize);
 static int php_mrloop_tcp_server_recv(void *conn, int fd, ssize_t nbytes, char *buffer);
 /* starts a TCP server */
 static void php_mrloop_tcp_server_listen(INTERNAL_FUNCTION_PARAMETERS);
-/* parses an HTTP request */
-static void php_mrloop_parse_http_request(INTERNAL_FUNCTION_PARAMETERS);
-/* parses an HTTP response */
-static void php_mrloop_parse_http_response(INTERNAL_FUNCTION_PARAMETERS);
 
 /* mrloop-bound callback specified during invocation of signal handlers */
 static void php_mrloop_signal_cb(int sig);
